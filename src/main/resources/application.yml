@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: bungae-server
+
+  # 로컬 PostgreSQL (docker: postgres:16 / DB=bungae, user=bungae, pw=bungae)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bungae
+    username: postgres
+    password: 1234
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 로컬 개발 편의상 update. 스키마 확정 후 validate + 마이그레이션(Flyway)으로 전환 권장.
+      ddl-auto: update
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        # LAZY 연관관계 N+1 완화 (컨벤션상 모든 연관관계 LAZY)
+        default_batch_fetch_size: 100
+
+  # 로컬 Redis (presence TTL / 세션 레지스트리 / 추후 Pub/Sub)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    # 바인딩 파라미터까지 보고 싶으면 TRACE
+    org.hibernate.orm.jdbc.bind: trace
