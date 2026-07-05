@@ -21,11 +21,17 @@ spring:
         # LAZY 연관관계 N+1 완화 (컨벤션상 모든 연관관계 LAZY)
         default_batch_fetch_size: 100
 
-  # 로컬 Redis (presence TTL / 세션 레지스트리 / 추후 Pub/Sub)
+  # 로컬 Redis (presence TTL / 세션 레지스트리 / refresh 토큰 / 추후 Pub/Sub)
   data:
     redis:
       host: localhost
       port: 6379
+
+# 자체 JWT 설정. secret 은 배포 시 반드시 환경변수(JWT_SECRET)로 주입 — HS256 이라 최소 32바이트.
+jwt:
+  secret: ${JWT_SECRET:bungae-local-dev-secret-change-me-please-0123456789abcdef}
+  access-token-validity: 30m
+  refresh-token-validity: 14d
 
 logging:
   level:
