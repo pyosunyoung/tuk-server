@@ -1,0 +1,40 @@
+# 로컬 개발용 인프라(PostgreSQL + Redis).
+# application.yml 의 접속 설정과 정확히 일치시켜 둠 → 앱은 설정 변경 없이 바로 붙는다.
+#
+# 사용법:
+#   docker compose up -d      # 백그라운드로 DB+Redis 기동
+#   docker compose ps         # 상태 확인
+#   docker compose logs -f    # 로그 보기
+#   docker compose down       # 중지 (데이터는 볼륨에 남음)
+#   docker compose down -v    # 중지 + 데이터까지 완전 삭제(초기화)
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: bungae-postgres
+    environment:
+      POSTGRES_USER: postgres      # application.yml 의 spring.datasource.username 과 동일
+      POSTGRES_PASSWORD: 1234       # spring.datasource.password 와 동일 (로컬 전용)
+      POSTGRES_DB: bungae           # 기동 시 이 이름의 DB 를 자동 생성
+    ports:
+      - "5432:5432"                 # 호스트 5432 → 컨테이너 5432 (localhost 로 접속)
+    volumes:
+      - bungae-postgres-data:/var/lib/postgresql/data   # 데이터 영속화(컨테이너 지워도 유지)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bungae"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: bungae-redis
+    ports:
+      - "6379:6379"                 # spring.data.redis.port 와 동일
+    volumes:
+      - bungae-redis-data:/data
+
+# Docker 가 관리하는 명명 볼륨. 실제 데이터 저장 위치(리포지토리에는 안 들어감).
+volumes:
+  bungae-postgres-data:
+  bungae-redis-data:
