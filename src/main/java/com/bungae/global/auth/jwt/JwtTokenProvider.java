@@ -44,11 +44,11 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 // jti: 같은 초에 같은 사용자로 발급해도 토큰이 유일하도록 → refresh rotation 이 의미를 가짐
                 .id(UUID.randomUUID().toString())
-                .subject(String.valueOf(userId))
-                .claim(TYPE_CLAIM, type)
+                .subject(String.valueOf(userId)) //토큰 주인
+                .claim(TYPE_CLAIM, type) // "type", type 커스텀 데이터(type) => access, refresh
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + validityMs))
-                .signWith(key)
+                .signWith(key) // 토큰 암호화 키
                 .compact();
     }
 
@@ -65,7 +65,7 @@ public class JwtTokenProvider {
     public boolean isAccessToken(String token) {
         return TYPE_ACCESS.equals(typeOf(token));
     }
-
+    //access 토큰에 access 토큰이 들어갔는지 확인하는 로직. refresh 동일
     public boolean isRefreshToken(String token) {
         return TYPE_REFRESH.equals(typeOf(token));
     }
@@ -79,7 +79,7 @@ public class JwtTokenProvider {
     }
 
     private Claims parse(String token) {
-        return Jwts.parser()
+        return Jwts.parser()//parser는 파싱(객체 형태로 만든다) 도구
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)

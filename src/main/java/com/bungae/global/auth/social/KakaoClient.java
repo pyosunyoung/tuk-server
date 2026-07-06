@@ -28,7 +28,7 @@ public class KakaoClient implements SocialClient {
     }
 
     @Override
-    public SocialUserInfo fetch(String socialAccessToken) {
+    public SocialUserInfo fetch(String socialAccessToken) { // 카카오 서버의 해당 토큰의 유저 정보 조회 로직
         KakaoUserResponse res = restClient.get()
                 .uri("/v2/user/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + socialAccessToken)
