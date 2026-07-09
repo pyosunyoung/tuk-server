@@ -39,11 +39,11 @@ class FriendshipServiceTest {
         assertThatThrownBy(() -> friendshipService.sendRequest(1L, 1L))
                 .isInstanceOf(BadRequestException.class);
     }
-
+    //given 모카 데이터 세팅
     @Test
     @DisplayName("sendRequest: 존재하지 않는 사용자면 404")
     void sendToUnknownUser() {
-        given(userRepository.findById(2L)).willReturn(Optional.empty());
+        given(userRepository.findById(2L)).willReturn(Optional.empty()); // 2번 유저를 호출 시 Optional.empty 데이터가 없다로 설정.
 
         assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
                 .isInstanceOf(NotFoundException.class);

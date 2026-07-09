@@ -59,18 +59,18 @@ public class PresenceService {
      */
     @Transactional(readOnly = true)
     public List<AvailableFriendResponse> getAvailableFriends(Long userId) {
-        List<Long> friendIds = friendshipRepository.findAcceptedFriendIds(userId);
+        List<Long> friendIds = friendshipRepository.findAcceptedFriendIds(userId); // 서로 친구 수락된 친구들의 ID목록(RDB)
         if (friendIds.isEmpty()) {
             return List.of();
         }
 
         Map<Long, Presence> presenceByUserId = new LinkedHashMap<>();
         presenceRepository.findAllById(friendIds)
-                .forEach(p -> presenceByUserId.put(p.getUserId(), p));
-        if (presenceByUserId.isEmpty()) {
+                .forEach(p -> presenceByUserId.put(p.getUserId(), p)); // 한가함 상태의 LIST만 가져옴.(Redis)
+        if (presenceByUserId.isEmpty()) { // 앱을 켜두지 않았거나, 지정 시간 만료 친구는 Redis에 존재하지 않음
             return List.of();
         }
-
+        // 3 단계: 살아있는 친구들의 구체적인 프로필 정보(닉네임, 사진)를 RDB에서 가져와 결합합니다.
         return userRepository.findAllById(presenceByUserId.keySet()).stream()
                 .map(user -> {
                     Presence presence = presenceByUserId.get(user.getId());
