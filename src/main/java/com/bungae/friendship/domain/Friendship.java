@@ -27,11 +27,11 @@ public class Friendship extends BaseTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "requester_id")
-    private User requester;
+    private User requester; // 신청자
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "addressee_id")
-    private User addressee;
+    private User addressee; // 수신자
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
