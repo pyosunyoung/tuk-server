@@ -7,6 +7,7 @@ import com.bungae.global.auth.social.OAuthProvider;
 import com.bungae.global.auth.social.SocialClientRouter;
 import com.bungae.global.auth.social.SocialUserInfo;
 import com.bungae.global.auth.token.RefreshTokenStore;
+import com.bungae.global.auth.token.RefreshTokenStore.RotationResult;
 import com.bungae.global.exception.AuthException;
 import com.bungae.user.domain.User;
 import com.bungae.user.repository.UserRepository;
@@ -50,23 +51,26 @@ public class AuthService {
         return issue(user.getId());
     }
 
-    /** refresh 토큰 rotation: 검증 → 저장본과 대조 → 새 쌍 발급 + 저장본 교체. */
+    /**
+     * refresh 토큰 rotation. 새 토큰을 먼저 만든 뒤, 저장소에서 비교→교체를 원자적으로 수행한다.
+     * (같은 토큰으로 동시 요청이 와도 하나만 ROTATED, 나머지는 REUSE 로 안전하게 처리)
+     */
     public TokenResponse refresh(String refreshToken) {
         if (!tokenProvider.isValid(refreshToken) || !tokenProvider.isRefreshToken(refreshToken)) {
             throw new AuthException("유효하지 않은 refresh 토큰입니다.");
         }
         Long userId = tokenProvider.getUserId(refreshToken);
+        String newAccessToken = tokenProvider.createAccessToken(userId);
+        String newRefreshToken = tokenProvider.createRefreshToken(userId);
 
-        String stored = refreshTokenStore.find(userId)
-                .orElseThrow(() -> new AuthException("만료되었거나 로그아웃된 세션입니다. 다시 로그인하세요."));
+        RotationResult result = refreshTokenStore.rotate(
+                userId, refreshToken, newRefreshToken, jwtProperties.getRefreshTokenValidity());
 
-        if (!stored.equals(refreshToken)) {
-            // 이미 회전된 옛 토큰 재사용 → 탈취 의심. 저장본을 파기해 강제 재로그인.
-            refreshTokenStore.delete(userId);
-            throw new AuthException("refresh 토큰이 재사용되었습니다. 다시 로그인하세요.");
-        }
-
-        return issue(userId);
+        return switch (result) {
+            case ROTATED -> new TokenResponse(newAccessToken, newRefreshToken);
+            case REUSE_DETECTED -> throw new AuthException("refresh 토큰이 재사용되었습니다. 다시 로그인하세요.");
+            case NOT_FOUND -> throw new AuthException("만료되었거나 로그아웃된 세션입니다. 다시 로그인하세요.");
+        };
     }
 
     public void logout(Long userId) {

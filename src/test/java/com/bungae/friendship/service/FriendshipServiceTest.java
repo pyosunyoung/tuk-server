@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
@@ -55,13 +56,26 @@ class FriendshipServiceTest {
         given(userRepository.findById(2L)).willReturn(Optional.of(addressee));
         given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
         given(userRepository.getReferenceById(1L)).willReturn(user(1L));
-        given(friendshipRepository.save(any(Friendship.class)))
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
                 .willAnswer(inv -> withId(inv.getArgument(0), 100L));
 
         FriendRequestResult result = friendshipService.sendRequest(1L, 2L);
 
         assertThat(result.friendshipId()).isEqualTo(100L);
         assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    @DisplayName("sendRequest: 동시 신청 경합에서 uq 위반(DataIntegrityViolation)이면 400 으로 번역")
+    void sendRaceLoserBecomes400() {
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willThrow(new DataIntegrityViolationException("uq_friend_pair"));
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -77,7 +91,7 @@ class FriendshipServiceTest {
 
         assertThat(result.status()).isEqualTo("ACCEPTED");
         assertThat(reverse.getStatus()).isEqualTo(Friendship.FriendshipStatus.ACCEPTED);
-        verify(friendshipRepository, never()).save(any(Friendship.class));
+        verify(friendshipRepository, never()).saveAndFlush(any(Friendship.class));
     }
 
     @Test

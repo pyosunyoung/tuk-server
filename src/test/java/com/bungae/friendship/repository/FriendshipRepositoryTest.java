@@ -13,9 +13,12 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -63,6 +66,16 @@ class FriendshipRepositoryTest {
         assertThat(friendshipRepository.findBetween(a.getId(), c.getId())).isPresent();
         // 관계없는 b-d 는 없음
         assertThat(friendshipRepository.findBetween(b.getId(), d.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("uq_friend_pair: 방향만 다른 중복 쌍은 DB 가 거부한다(경합 방지)")
+    void reversePairRejected() {
+        // setUp 에서 a→b 가 이미 저장됨. 반대 방향 b→a 는 정규화 쌍(user_low_id,user_high_id)이 같아 유니크 위반.
+        Friendship reverse = Friendship.builder().requester(b).addressee(a).build();
+
+        assertThatThrownBy(() -> friendshipRepository.saveAndFlush(reverse))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test

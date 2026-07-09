@@ -7,6 +7,7 @@ import com.bungae.global.auth.social.OAuthProvider;
 import com.bungae.global.auth.social.SocialClientRouter;
 import com.bungae.global.auth.social.SocialUserInfo;
 import com.bungae.global.auth.token.RefreshTokenStore;
+import com.bungae.global.auth.token.RefreshTokenStore.RotationResult;
 import com.bungae.global.exception.AuthException;
 import com.bungae.user.domain.User;
 import com.bungae.user.repository.UserRepository;
@@ -112,6 +113,14 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("refresh: 저장본이 없으면(만료·로그아웃) 거부")
+    void refreshNotFound() {
+        String valid = tokenProvider.createRefreshToken(5L); // 서명은 유효하지만 저장소엔 없음
+
+        assertThatThrownBy(() -> authService.refresh(valid)).isInstanceOf(AuthException.class);
+    }
+
+    @Test
     @DisplayName("refresh: access 토큰을 refresh 로 넘기면 거부")
     void refreshWithAccessTokenRejected() {
         String access = tokenProvider.createAccessToken(5L);
@@ -138,16 +147,30 @@ class AuthServiceTest {
     static class InMemoryRefreshTokenStore implements RefreshTokenStore {
         private final Map<Long, String> store = new HashMap<>();
 
-        @Override public void save(Long userId, String refreshToken, Duration ttl) {
+        @Override public synchronized void save(Long userId, String refreshToken, Duration ttl) {
             store.put(userId, refreshToken);
         }
 
-        @Override public Optional<String> find(Long userId) {
+        @Override public synchronized Optional<String> find(Long userId) {
             return Optional.ofNullable(store.get(userId));
         }
 
-        @Override public void delete(Long userId) {
+        @Override public synchronized void delete(Long userId) {
             store.remove(userId);
+        }
+
+        @Override public synchronized RotationResult rotate(Long userId, String presentedToken,
+                                                            String newRefreshToken, Duration ttl) {
+            String cur = store.get(userId);
+            if (cur == null) {
+                return RotationResult.NOT_FOUND;
+            }
+            if (cur.equals(presentedToken)) {
+                store.put(userId, newRefreshToken);
+                return RotationResult.ROTATED;
+            }
+            store.remove(userId);
+            return RotationResult.REUSE_DETECTED;
         }
     }
 }

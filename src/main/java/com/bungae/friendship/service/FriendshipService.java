@@ -11,6 +11,7 @@ import com.bungae.global.exception.ForbiddenException;
 import com.bungae.global.exception.NotFoundException;
 import com.bungae.user.domain.User;
 import com.bungae.user.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,9 +60,15 @@ public class FriendshipService {
         }
 
         User requester = userRepository.getReferenceById(requesterId);
-        Friendship saved = friendshipRepository.save(
-                Friendship.builder().requester(requester).addressee(addressee).build());
-        return FriendRequestResult.from(saved);
+        try {
+            // saveAndFlush: uq_friend_pair 위반을 여기서(트랜잭션 커밋 전) 즉시 감지하기 위함.
+            // 두 사람이 동시에 서로 신청해 findBetween 을 둘 다 통과한 경합에서, 진 쪽을 500 대신 400 으로.
+            Friendship saved = friendshipRepository.saveAndFlush(
+                    Friendship.builder().requester(requester).addressee(addressee).build());
+            return FriendRequestResult.from(saved);
+        } catch (DataIntegrityViolationException e) {
+            throw new BadRequestException("이미 친구 신청이 진행 중이거나 친구입니다.");
+        }
     }
 
     /** 친구 신청 수락. 수신자 본인만 가능. */
