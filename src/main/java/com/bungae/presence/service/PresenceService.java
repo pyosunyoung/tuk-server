@@ -6,6 +6,7 @@ import com.bungae.presence.domain.Presence;
 import com.bungae.presence.dto.AvailableFriendResponse;
 import com.bungae.presence.dto.MyPresenceResponse;
 import com.bungae.presence.repository.PresenceRepository;
+import com.bungae.presence.ws.PresenceEventBroadcaster;
 import com.bungae.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,28 +21,33 @@ public class PresenceService {
     private final PresenceRepository presenceRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
+    private final PresenceEventBroadcaster broadcaster;
 
     public PresenceService(PresenceRepository presenceRepository,
                            FriendshipRepository friendshipRepository,
-                           UserRepository userRepository) {
+                           UserRepository userRepository,
+                           PresenceEventBroadcaster broadcaster) {
         this.presenceRepository = presenceRepository;
         this.friendshipRepository = friendshipRepository;
         this.userRepository = userRepository;
+        this.broadcaster = broadcaster;
     }
 
-    /** 콜 켜기. 기존 상태가 있어도 덮어써서 갱신(활동/TTL 재설정). */
+    /** 콜 켜기. 기존 상태가 있어도 덮어써서 갱신(활동/TTL 재설정). 접속 중인 절친에게 실시간 전파. */
     public MyPresenceResponse turnOn(Long userId, Activity activity, long durationSeconds) {
         Presence saved = presenceRepository.save(Presence.builder()
                 .userId(userId)
                 .activity(activity)
                 .ttlSeconds(durationSeconds)
                 .build());
+        broadcaster.broadcastAvailable(userId, activity, saved.getTtlSeconds());
         return MyPresenceResponse.of(saved);
     }
 
     /** 콜 끄기(수동). 안 꺼도 TTL 로 자동 만료된다. */
     public void turnOff(Long userId) {
         presenceRepository.deleteById(userId);
+        broadcaster.broadcastUnavailable(userId);
     }
 
     public MyPresenceResponse getMyPresence(Long userId) {

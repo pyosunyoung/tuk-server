@@ -6,6 +6,7 @@ import com.bungae.presence.domain.Presence;
 import com.bungae.presence.dto.AvailableFriendResponse;
 import com.bungae.presence.dto.MyPresenceResponse;
 import com.bungae.presence.repository.PresenceRepository;
+import com.bungae.presence.ws.PresenceEventBroadcaster;
 import com.bungae.user.domain.User;
 import com.bungae.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -34,6 +35,7 @@ class PresenceServiceTest {
     @Mock PresenceRepository presenceRepository;
     @Mock FriendshipRepository friendshipRepository;
     @Mock UserRepository userRepository;
+    @Mock PresenceEventBroadcaster broadcaster;
     @InjectMocks PresenceService presenceService;
 
     @Test
@@ -90,13 +92,17 @@ class PresenceServiceTest {
         assertThat(res.available()).isTrue();
         assertThat(res.activity()).isEqualTo(Activity.DRINK);
         assertThat(res.remainingSeconds()).isEqualTo(7200L);
+
+        // 접속 중인 절친에게 실시간 전파
+        verify(broadcaster).broadcastAvailable(1L, Activity.DRINK, 7200L);
     }
 
     @Test
-    @DisplayName("turnOff: presence 삭제")
+    @DisplayName("turnOff: presence 삭제 + 절친에게 UNAVAILABLE 전파")
     void turnOff() {
         presenceService.turnOff(1L);
         verify(presenceRepository).deleteById(1L);
+        verify(broadcaster).broadcastUnavailable(1L);
     }
 
     @Test

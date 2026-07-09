@@ -42,6 +42,8 @@ public class SecurityConfig {
                         // 로그인·토큰 재발급은 인증 없이 접근
                         .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // WebSocket 핸드셰이크는 열어두고 인증은 STOMP CONNECT 에서 처리
+                        .requestMatchers("/ws/**").permitAll()
                         // 그 외 전부 access 토큰 필요 (로그아웃 포함)
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(tokenProvider),
