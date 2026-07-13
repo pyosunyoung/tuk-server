@@ -23,6 +23,8 @@ public class WebSocketSessionRegistry {
 
     private final Map<Long, Set<String>> userToSessions = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionToUser = new ConcurrentHashMap<>();
+    //userToSessions: 유저 ID를 넣으면 그 유저가 연결한 모든 세션 리스트를 줍니다. (예: "1번 유저 지금 폰이랑 PC로 접속 중이네?")
+    //sessionToUser: 반대로 세션 ID를 넣으면 주인이 누구인지 바로 알려줍니다. (예: "방금 끊긴 abc123xx 세션은 1번 유저 꺼였네?")
 
     public void register(Long userId, String sessionId) {
         userToSessions.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet()).add(sessionId);
@@ -46,7 +48,7 @@ public class WebSocketSessionRegistry {
     public boolean isOnline(Long userId) {
         Set<String> sessions = userToSessions.get(userId);
         return sessions != null && !sessions.isEmpty();
-    }
+    } // 온라인 상태 여부
 
     public Set<Long> onlineUsers() {
         return Set.copyOf(userToSessions.keySet());
@@ -56,6 +58,7 @@ public class WebSocketSessionRegistry {
 
     @EventListener
     public void onConnected(SessionConnectedEvent event) {
+        // 1. 웹소켓 연결 성공 이벤트가 발생하면 작동!
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         Principal user = accessor.getUser();
         String sessionId = accessor.getSessionId();

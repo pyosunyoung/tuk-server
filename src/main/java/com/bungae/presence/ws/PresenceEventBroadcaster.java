@@ -17,7 +17,7 @@ public class PresenceEventBroadcaster {
 
     private static final String DESTINATION = "/queue/presence";
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate; //스프링이 제공하는 웹소켓 메시지 배달부
     private final WebSocketSessionRegistry sessionRegistry;
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
