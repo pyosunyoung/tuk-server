@@ -11,6 +11,7 @@ import com.bungae.flash.dto.SetPlaceRequest;
 import com.bungae.flash.repository.FlashRecipientRepository;
 import com.bungae.flash.repository.FlashRepository;
 import com.bungae.flash.repository.MeetupRoomRepository;
+import com.bungae.flash.ws.FlashBroadcastEvent;
 import com.bungae.friendship.repository.FriendshipRepository;
 import com.bungae.global.common.Activity;
 import com.bungae.global.exception.BadRequestException;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -46,6 +48,7 @@ class FlashServiceTest {
     @Mock MeetupRoomRepository meetupRoomRepository;
     @Mock FriendshipRepository friendshipRepository;
     @Mock UserRepository userRepository;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks FlashService flashService;
 
     // --- 발송 ---
@@ -54,6 +57,7 @@ class FlashServiceTest {
     @DisplayName("sendFlash: 대상 중 절친이 아닌 사람은 제외(서버측 재검증)")
     void sendReValidatesTargets() {
         given(friendshipRepository.findAcceptedFriendIds(1L)).willReturn(List.of(2L, 3L));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user(1L, "보낸이")));
         given(userRepository.getReferenceById(anyLong())).willAnswer(inv -> user(inv.getArgument(0), "u"));
         given(flashRepository.save(any(Flash.class))).willAnswer(inv -> withId(inv.getArgument(0), 10L));
         given(flashRecipientRepository.save(any(FlashRecipient.class))).willAnswer(inv -> inv.getArgument(0));
@@ -66,6 +70,8 @@ class FlashServiceTest {
         assertThat(res.roomId()).isEqualTo(20L);
         assertThat(res.recipientCount()).isEqualTo(2); // 4 제외
         verify(flashRecipientRepository, times(2)).save(any(FlashRecipient.class));
+        // 커밋 이후 전파를 위해 이벤트 발행
+        verify(eventPublisher).publishEvent(any(FlashBroadcastEvent.class));
     }
 
     @Test
@@ -122,6 +128,8 @@ class FlashServiceTest {
         assertThat(recipient.isJoined()).isTrue();
         assertThat(res.members()).extracting("userId").containsExactlyInAnyOrder(1L, 2L);
         assertThat(res.members()).filteredOn("sender", true).extracting("userId").containsExactly(1L);
+        // 최초 합류 → 나머지 멤버에게 전파 이벤트 발행
+        verify(eventPublisher).publishEvent(any(FlashBroadcastEvent.class));
     }
 
     @Test
@@ -139,6 +147,8 @@ class FlashServiceTest {
 
         assertThat(recipient.isJoined()).isTrue();
         assertThat(res.roomId()).isEqualTo(20L);
+        // 멱등 재호출은 전파하지 않는다
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // --- 모임방 ---

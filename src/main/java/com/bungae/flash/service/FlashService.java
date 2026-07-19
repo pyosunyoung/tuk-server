@@ -8,17 +8,20 @@ import com.bungae.flash.dto.FlashResponse;
 import com.bungae.flash.dto.MeetupRoomResponse;
 import com.bungae.flash.dto.MemberResponse;
 import com.bungae.flash.dto.ReceivedFlashResponse;
+import com.bungae.flash.dto.FlashPushEvent;
 import com.bungae.flash.dto.SendFlashRequest;
 import com.bungae.flash.dto.SetPlaceRequest;
 import com.bungae.flash.repository.FlashRecipientRepository;
 import com.bungae.flash.repository.FlashRepository;
 import com.bungae.flash.repository.MeetupRoomRepository;
+import com.bungae.flash.ws.FlashBroadcastEvent;
 import com.bungae.friendship.repository.FriendshipRepository;
 import com.bungae.global.exception.BadRequestException;
 import com.bungae.global.exception.ForbiddenException;
 import com.bungae.global.exception.NotFoundException;
 import com.bungae.user.domain.User;
 import com.bungae.user.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,17 +41,20 @@ public class FlashService {
     private final MeetupRoomRepository meetupRoomRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public FlashService(FlashRepository flashRepository,
                         FlashRecipientRepository flashRecipientRepository,
                         MeetupRoomRepository meetupRoomRepository,
                         FriendshipRepository friendshipRepository,
-                        UserRepository userRepository) {
+                        UserRepository userRepository,
+                        ApplicationEventPublisher eventPublisher) {
         this.flashRepository = flashRepository;
         this.flashRecipientRepository = flashRecipientRepository;
         this.meetupRoomRepository = meetupRoomRepository;
         this.friendshipRepository = friendshipRepository;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -71,8 +77,11 @@ public class FlashService {
         LocalDateTime base = request.scheduledAt() != null ? request.scheduledAt() : now;
         LocalDateTime expiresAt = base.plusMinutes(durationMinutes);
 
+        User sender = userRepository.findById(senderId)
+                .orElseThrow(() -> new NotFoundException("존재하지 않는 사용자입니다."));
+
         Flash flash = flashRepository.save(Flash.builder()
-                .sender(userRepository.getReferenceById(senderId))
+                .sender(sender)
                 .activity(request.activity())
                 .scheduledAt(request.scheduledAt())
                 .message(request.message())
@@ -90,6 +99,12 @@ public class FlashService {
                 .flash(flash)
                 .expiresAt(expiresAt)
                 .build());
+
+        // 커밋 이후 접속 중인 수신자에게 "새 번개" 전파 (payload 는 트랜잭션 안에서 완성)
+        FlashPushEvent payload = FlashPushEvent.newFlash(flash.getId(), sender.getId(),
+                sender.getNickname(), sender.getProfileImage(),
+                flash.getActivity(), flash.getMessage(), flash.getScheduledAt(), flash.getExpiresAt());
+        eventPublisher.publishEvent(new FlashBroadcastEvent(payload, targets));
 
         return new FlashResponse(flash.getId(), room.getId(), flash.getActivity(),
                 flash.getScheduledAt(), flash.getExpiresAt(), targets.size());
@@ -124,10 +139,37 @@ public class FlashService {
         if (!recipient.getFlash().isActive()) {
             throw new BadRequestException("이미 종료되었거나 만료된 번개입니다.");
         }
-        if (!recipient.isJoined()) {
+        boolean firstJoin = !recipient.isJoined();
+        if (firstJoin) {
             recipient.join();
         }
-        return buildRoomResponse(requireRoom(flashId));
+
+        MeetupRoomResponse room = buildRoomResponse(requireRoom(flashId));
+        if (firstJoin) {
+            // 최초 합류일 때만, 커밋 이후 나머지 멤버에게 "X 합류" 전파(멱등 재호출은 조용히)
+            publishMemberJoined(userId, flashId, room);
+        }
+        return room;
+    }
+
+    private void publishMemberJoined(Long joinerId, Long flashId, MeetupRoomResponse room) {
+        MemberResponse joiner = room.members().stream()
+                .filter(m -> m.userId().equals(joinerId))
+                .findFirst()
+                .orElse(null);
+        if (joiner == null) {
+            return;
+        }
+        List<Long> notifyTargets = room.members().stream()
+                .map(MemberResponse::userId)
+                .filter(id -> !id.equals(joinerId))
+                .toList();
+        if (notifyTargets.isEmpty()) {
+            return;
+        }
+        FlashPushEvent payload = FlashPushEvent.memberJoined(
+                flashId, joiner.userId(), joiner.nickname(), joiner.profileImage());
+        eventPublisher.publishEvent(new FlashBroadcastEvent(payload, notifyTargets));
     }
 
     @Transactional(readOnly = true)
@@ -169,12 +211,12 @@ public class FlashService {
         User sender = flash.getSender();
 
         List<MemberResponse> members = new ArrayList<>();
-        members.add(new MemberResponse(sender.getId(), sender.getNickname(), sender.getProfileImage(), true));
+        members.add(new MemberResponse(sender.getId(), sender.getNickname(), sender.getProfileImage(), true)); //보낸사람, 멤버에 방장 추가
         flashRecipientRepository.findByFlashIdAndStatus(flash.getId(), RecipientStatus.JOINED)
                 .forEach(recipient -> {
                     User member = recipient.getUser();
                     members.add(new MemberResponse(member.getId(), member.getNickname(), member.getProfileImage(), false));
-                });
+                }); // 수신자들 멤버 추가
 
         return new MeetupRoomResponse(
                 room.getId(),

@@ -34,6 +34,7 @@ public class FlashExpirationScheduler {
         LocalDateTime now = LocalDateTime.now();
         flashRepository.findByStatusAndExpiresAtBefore(Flash.FlashStatus.ACTIVE, now)
                 .forEach(Flash::expire);
+         //DB에서 상태가 ACTIVE이면서 만료 시간이 현재 시간(now)보다 이전인 번개방 목록 가져와서 모두 expire로 바꿔주는 로직
         meetupRoomRepository.findByStatusAndExpiresAtBefore(MeetupRoom.RoomStatus.OPEN, now)
                 .forEach(MeetupRoom::close);
     }
