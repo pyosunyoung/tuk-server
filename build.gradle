@@ -25,6 +25,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+	// FCM 푸시 (fcm.enabled=true 일 때만 실제 발송 빈이 생성됨)
+	implementation 'com.google.firebase:firebase-admin:9.4.1'
 	// JWT (access/refresh 토큰 발급·검증)
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
