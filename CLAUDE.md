@@ -14,9 +14,14 @@
 4. **닫힌 절친** — 번개 대상은 항상 서버에서 절친 관계를 재검증한다 (클라이언트가 보낸 대상 그대로 신뢰 금지).
 
 ## 기술 스택
-- 백엔드: Spring Boot 3, Spring Data JPA, Spring Data Redis, WebSocket(STOMP), Spring Security + JWT, OAuth2(소셜 로그인)
-- DB: PostgreSQL · 실시간/presence: Redis · 푸시: FCM
+- 백엔드: **Spring Boot 4.0.7 / Java 17**, Spring Data JPA, Spring Data Redis, WebSocket(STOMP), Spring Security + JWT(jjwt), OAuth2(소셜 로그인)
+- DB: PostgreSQL · 실시간/presence: Redis · 푸시: FCM(firebase-admin)
 - 앱: Flutter · 웹: Next.js(React)
+
+> ⚠️ **Boot 4라 Boot 3 예제/블로그와 다름** (실제로 여러 번 부딪힌 부분):
+> - 슬라이스 테스트 애노테이션 패키지 재편: `@DataJpaTest` → `org.springframework.boot.data.jpa.test.autoconfigure`, `@AutoConfigureTestDatabase` → `...boot.jdbc.test.autoconfigure`, `TestEntityManager` → `...boot.jpa.test.autoconfigure`
+> - starter 이름: `spring-boot-starter-webmvc`(구 `-web`), 테스트는 모듈형(`spring-boot-starter-data-jpa-test` 등)
+> - `RestClient.Builder`는 자동 구성 빈이 **아님** → `RestClient.builder()` 정적 팩토리로 직접 생성
 
 ## 아키텍처
 - 레이어드: Controller → Service → Repository
@@ -33,18 +38,48 @@ User, Friendship(자기참조 N:N, status), Flash(+scheduled_at), FlashRecipient
 - 기본 생성자 `protected`, 객체 생성은 `@Builder`
 - 테이블명 `users` (user는 예약어). `@EnableJpaAuditing` 필요.
 
-## 구현 순서 (설계 순서 ≠ 구현 순서)
-1. 프로젝트 셋업 + `application.yml`(PostgreSQL/Redis 연결) + JPA Auditing
-2. **Repository** ← 현재 여기
-3. 인증/소셜 로그인 + JWT
-4. Friendship (절친 추가·수락)
-5. Presence (콜 켜기·조회 + WebSocket)
-6. Flash (발송·합류·모임방 + 만료 스케줄러)
-7. Notification (FCM)
+## 구현 순서 (설계 순서 ≠ 구현 순서) — **전 단계 완료**
+1. ✅ 프로젝트 셋업 + `application.yml`(PostgreSQL/Redis) + JPA Auditing
+2. ✅ Repository + 핵심 쿼리
+3. ✅ 인증/소셜 로그인 + JWT
+4. ✅ Friendship (절친 추가·수락)
+5. ✅ Presence (콜 켜기·조회 + WebSocket)
+6. ✅ Flash (발송·합류·모임방 + 만료 스케줄러 + WebSocket)
+7. ✅ Notification (FCM)
+
+## 주요 엔드포인트
+- 인증: `POST /api/auth/login` · `/refresh` · `/logout`
+- 친구: `POST /api/friendships` · `POST /{id}/accept` · `GET /requests` · `GET /api/friendships`
+- Presence: `POST/DELETE /api/presence` · `GET /me` · `GET /friends`(지금 한가한 친구)
+- 번개: `POST /api/flashes` · `GET /received` · `POST /{id}/join` · `GET /{id}/room` · `PATCH /{id}/room/place`
+- 기기토큰: `POST/DELETE /api/device-tokens`
+- WebSocket: `/ws` 핸드셰이크(permitAll) → STOMP CONNECT 헤더 JWT 인증. 구독 `/user/queue/presence`, `/user/queue/flash`
+
+## 실시간 알림 라우팅
+같은 이벤트를 두 리스너가 분담하며, **둘 다 `@TransactionalEventListener(AFTER_COMMIT)`** (커밋 전 전파 금지 — 롤백 시 유령 알림):
+- 접속 중 → WebSocket (`FlashEventBroadcaster`)
+- 미접속 → FCM (`FlashPushListener`)
+- presence(콜 켜기/끄기)는 **의도적으로 FCM 제외** — 앱 열면 보이는 주변 상태라 푸시하면 시끄러움
 
 ## 상세 설계 문서
 전체 기획·경쟁분석·기능명세·화면흐름·ERD·시퀀스·API 명세는 Notion 허브 참고:
 https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
 
 ## 현재 상태
-설계 완료. 엔티티 코드 작성됨. 다음 할 일: `application.yml` 설정 → Repository + 핵심 쿼리("지금 한가한 친구 조회", "내가 받은 활성 번개").
+**MVP 백엔드 구현 완료** (구현 순서 ①~⑦). 로컬 기준 전체 테스트 68개 통과, 4대 설계 원칙 코드 반영 확인.
+
+### 아직 안 된 것 (배포 전 필수)
+1. **비밀값 외부화** — `application.yml`에 DB 비번·JWT dev secret이 그대로 있음. 실제 카카오 키/운영 비번 넣기 **전에** 환경변수로 뺄 것(한번 커밋되면 히스토리에 남음).
+2. **`ddl-auto: update` → `validate` + Flyway** — 스키마 확정됐으니 마이그레이션으로 전환.
+   (주의: `update`는 기존 테이블에 유니크 제약을 새로 안 걸어줌. 제약을 바꾸면 테이블 재생성 필요)
+3. **CORS 개방 상태** — `allowedOriginPatterns("*")` + credentials. 배포 시 앱/웹 오리진으로 좁힐 것.
+4. **Apple 로그인 미구현** — `SocialClient` 구현체는 Kakao만. Apple은 id_token 공개키 검증 필요.
+5. **FCM 실제 키 미연동** — 기본은 `LoggingPushSender`(로그만). `FCM_ENABLED=true` + `FCM_CREDENTIALS_PATH` 주면 실제 발송으로 전환(코드 변경 불필요).
+6. **엔드투엔드 미검증** — 실제 카카오 토큰 로그인 → STOMP 연결 → 번개 발송 흐름은 앱 클라이언트 붙일 때 확인 필요.
+
+### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
+- 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리
+- 스위퍼가 인스턴스마다 실행 → 다중 서버 시 분산 락(ShedLock)
+- WebSocket SimpleBroker(단일 서버) → 다중 서버 시 Redis Pub/Sub·외부 브로커
+- FCM 발송이 요청 스레드 동기 실행 → 비동기/큐
+- refresh 토큰이 사용자당 1개(단일 세션, 의도적 MVP 선택) → 멀티기기 필요 시 `refresh:{userId}:{deviceId}`로 분리
