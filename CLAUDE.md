@@ -69,7 +69,7 @@ https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
 **MVP 백엔드 구현 완료** (구현 순서 ①~⑦). 로컬 기준 전체 테스트 68개 통과, 4대 설계 원칙 코드 반영 확인.
 
 ### 아직 안 된 것 (배포 전 필수)
-1. **비밀값 외부화** — `application.yml`에 DB 비번·JWT dev secret이 그대로 있음. 실제 카카오 키/운영 비번 넣기 **전에** 환경변수로 뺄 것(한번 커밋되면 히스토리에 남음).
+1. ~~비밀값 외부화~~ ✅ **구조 완료** — 모든 환경값이 `${ENV:dev기본값}`. 실제 값은 환경변수 또는 `application-local.yml`(gitignore)로 오버라이드. 커밋 파일엔 로컬 dev 기본값만. 운영 배포 시 실제 값을 env 로 주입만 하면 됨(`application-local.yml.example` 참고). **주의: 실제 카카오 키·운영 비번을 `application.yml`에 직접 쓰지 말 것.**
 2. **`ddl-auto: update` → `validate` + Flyway** — 스키마 확정됐으니 마이그레이션으로 전환.
    (주의: `update`는 기존 테이블에 유니크 제약을 새로 안 걸어줌. 제약을 바꾸면 테이블 재생성 필요)
 3. **CORS 개방 상태** — `allowedOriginPatterns("*")` + credentials. 배포 시 앱/웹 오리진으로 좁힐 것.

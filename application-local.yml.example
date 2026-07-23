@@ -1,0 +1,22 @@
+# 이 파일을 application-local.yml 로 복사한 뒤 실제 값을 채우세요.
+#   cp application-local.yml.example application-local.yml
+# application-local.yml 은 .gitignore 되어 커밋되지 않습니다.
+# 여기 적은 값은 application.yml 의 기본값을 덮어씁니다. (환경변수를 쓰면 이 파일 없이도 됨)
+#
+# ⚠️ 실제 카카오 키·운영 DB 비번·JWT 운영 시크릿은 절대 application.yml 에 직접 쓰지 말 것.
+#    (한번 커밋되면 git 히스토리에 영구히 남습니다)
+
+spring:
+  datasource:
+    # url: jdbc:postgresql://<host>:5432/bungae
+    # username: <user>
+    password: <실제_DB_비밀번호>
+
+# JWT 서명 키 — HS256 이라 최소 32바이트. 운영은 반드시 강한 랜덤값.
+jwt:
+  secret: <최소_32바이트_랜덤_시크릿>
+
+# FCM 실제 발송 켤 때
+fcm:
+  enabled: false
+  # credentials-path: /절대/경로/service-account.json

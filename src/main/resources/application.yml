@@ -2,11 +2,16 @@ spring:
   application:
     name: bungae-server
 
-  # 로컬 PostgreSQL (docker: postgres:16 / DB=bungae, user=bungae, pw=bungae)
+  # 비밀값/환경별 오버라이드는 application-local.yml(gitignore)에. 없으면 무시된다.
+  # 우선순위: 환경변수 > application-local.yml > 아래 기본값
+  config:
+    import: optional:file:./application-local.yml
+
+  # 로컬 PostgreSQL. 운영/실제 값은 환경변수(DB_*)로 주입 — 커밋 파일엔 로컬 기본값만.
   datasource:
-    url: jdbc:postgresql://localhost:5432/bungae
-    username: postgres
-    password: 1234
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bungae}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:1234}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -24,8 +29,8 @@ spring:
   # 로컬 Redis (presence TTL / 세션 레지스트리 / refresh 토큰 / 추후 Pub/Sub)
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 # FCM 푸시. 기본은 꺼짐(로깅 구현체 사용) → Firebase 키 없이도 앱이 뜬다.
 # 실제 발송하려면 FCM_ENABLED=true + 서비스 계정 JSON 경로(FCM_CREDENTIALS_PATH) 지정.
