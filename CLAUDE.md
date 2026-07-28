@@ -75,7 +75,8 @@ https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
 3. **CORS 개방 상태** — `allowedOriginPatterns("*")` + credentials. 배포 시 앱/웹 오리진으로 좁힐 것.
 4. **Apple 로그인 미구현** — `SocialClient` 구현체는 Kakao만. Apple은 id_token 공개키 검증 필요.
 5. **FCM 실제 키 미연동** — 기본은 `LoggingPushSender`(로그만). `FCM_ENABLED=true` + `FCM_CREDENTIALS_PATH` 주면 실제 발송으로 전환(코드 변경 불필요).
-6. **엔드투엔드 미검증** — 실제 카카오 토큰 로그인 → STOMP 연결 → 번개 발송 흐름은 앱 클라이언트 붙일 때 확인 필요.
+6. **Swagger UI 개발용 개방** — `/swagger-ui/**`·`/v3/api-docs/**` 가 permitAll. 배포 시 차단하거나 인증 걸 것(운영 프로필에서 `springdoc.swagger-ui.enabled=false`, `springdoc.api-docs.enabled=false` 또는 SecurityConfig 에서 permitAll 제거).
+7. **엔드투엔드 — REST 검증됨 / STOMP 미검증** — 실제 카카오 로그인 → 친구·presence·번개 REST 흐름은 로컬 실서버로 검증 완료(카카오 실계정 유저 생성 확인). WebSocket(STOMP) 실연결(구독→실시간 수신)은 앱 클라이언트 붙일 때 확인.
 
 ### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
 - 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리
