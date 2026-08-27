@@ -7,6 +7,7 @@ import com.bungae.flash.domain.MeetupRoom;
 import com.bungae.flash.dto.FlashResponse;
 import com.bungae.flash.dto.MeetupRoomResponse;
 import com.bungae.flash.dto.SendFlashRequest;
+import com.bungae.flash.dto.SentFlashResponse;
 import com.bungae.flash.dto.SetPlaceRequest;
 import com.bungae.flash.repository.FlashRecipientRepository;
 import com.bungae.flash.repository.FlashRepository;
@@ -173,6 +174,55 @@ class FlashServiceTest {
         MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대 A카페", 37.5, 127.0));
 
         assertThat(res.placeName()).isEqualTo("홍대 A카페");
+    }
+
+    // --- 내가 띄운 번개 (GET /sent) ---
+
+    @Test
+    @DisplayName("getSentFlashes: 내 활성 번개를 합류자와 함께 반환")
+    void sentWithJoinedMembers() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        FlashRecipient joined = FlashRecipient.builder().flash(flash).user(user(2L, "합류자")).build();
+        joined.join();
+        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+                .willReturn(List.of(flash));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED))
+                .willReturn(List.of(joined));
+
+        List<SentFlashResponse> res = flashService.getSentFlashes(1L);
+
+        assertThat(res).hasSize(1);
+        assertThat(res.get(0).flashId()).isEqualTo(10L);
+        assertThat(res.get(0).joinedMembers()).extracting("nickname").containsExactly("합류자");
+    }
+
+    @Test
+    @DisplayName("getSentFlashes: 아직 도달 안 한 예약 번개는 제외(방 열리기 전)")
+    void sentExcludesFutureReserved() {
+        Flash reserved = withId(Flash.builder()
+                .sender(user(1L, "보낸이")).activity(Activity.MEAL)
+                .scheduledAt(LocalDateTime.now().plusHours(1))
+                .expiresAt(LocalDateTime.now().plusHours(2)).build(), 11L);
+        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+                .willReturn(List.of(reserved));
+
+        List<SentFlashResponse> res = flashService.getSentFlashes(1L);
+
+        assertThat(res).isEmpty();
+        // 제외됐으므로 멤버 조회도 하지 않는다
+        verify(flashRecipientRepository, never()).findByFlashIdAndStatus(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("getSentFlashes: 활성 발송 번개가 없으면 빈 목록")
+    void sentEmpty() {
+        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+                .willReturn(List.of());
+
+        assertThat(flashService.getSentFlashes(1L)).isEmpty();
     }
 
     // --- helpers ---
