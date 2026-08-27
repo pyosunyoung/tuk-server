@@ -15,4 +15,8 @@ public interface FlashRepository extends JpaRepository<Flash, Long> {
      * (status, expiresAt) 복합 인덱스가 이 조회를 커버한다.
      */
     List<Flash> findByStatusAndExpiresAtBefore(FlashStatus status, LocalDateTime time);
+
+    /** 내가 띄운 활성 번개: 내가 보낸(sender) + ACTIVE + 만료 전. 최신순. */
+    List<Flash> findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+            Long senderId, FlashStatus status, LocalDateTime now);
 }

@@ -4,6 +4,7 @@ import com.bungae.flash.dto.FlashResponse;
 import com.bungae.flash.dto.MeetupRoomResponse;
 import com.bungae.flash.dto.ReceivedFlashResponse;
 import com.bungae.flash.dto.SendFlashRequest;
+import com.bungae.flash.dto.SentFlashResponse;
 import com.bungae.flash.dto.SetPlaceRequest;
 import com.bungae.flash.service.FlashService;
 import jakarta.validation.Valid;
@@ -39,6 +40,12 @@ public class FlashController {
     @GetMapping("/received")
     public List<ReceivedFlashResponse> received(@AuthenticationPrincipal Long userId) {
         return flashService.getReceivedFlashes(userId);
+    }
+
+    /** 내가 띄운 활성 번개 목록(홈 "내가 띄운 번개" 배너용). */
+    @GetMapping("/sent")
+    public List<SentFlashResponse> sent(@AuthenticationPrincipal Long userId) {
+        return flashService.getSentFlashes(userId);
     }
 
     /** 번개 합류. */

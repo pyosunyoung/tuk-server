@@ -10,6 +10,8 @@ import com.bungae.flash.dto.MemberResponse;
 import com.bungae.flash.dto.ReceivedFlashResponse;
 import com.bungae.flash.dto.FlashPushEvent;
 import com.bungae.flash.dto.SendFlashRequest;
+import com.bungae.flash.dto.SentFlashResponse;
+import com.bungae.flash.domain.Flash.FlashStatus;
 import com.bungae.flash.dto.SetPlaceRequest;
 import com.bungae.flash.repository.FlashRecipientRepository;
 import com.bungae.flash.repository.FlashRepository;
@@ -125,6 +127,29 @@ public class FlashService {
     public List<ReceivedFlashResponse> getReceivedFlashes(Long userId) {
         return flashRecipientRepository.findActiveReceived(userId, LocalDateTime.now()).stream()
                 .map(ReceivedFlashResponse::from)
+                .toList();
+    }
+
+    /**
+     * 내가 띄운 활성 번개(ACTIVE + 만료 전 + 이미 시작됨). 홈 "내가 띄운 번개" 배너용.
+     * 예약이 아직 도달 안 한 번개는 방이 열리기 전이라 제외한다.
+     */
+    @Transactional(readOnly = true)
+    public List<SentFlashResponse> getSentFlashes(Long userId) {
+        LocalDateTime now = LocalDateTime.now();
+        return flashRepository
+                .findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(userId, FlashStatus.ACTIVE, now)
+                .stream()
+                .filter(flash -> flash.getScheduledAt() == null || !flash.getScheduledAt().isAfter(now))
+                .map(flash -> {
+                    List<MemberResponse> joined = flashRecipientRepository
+                            .findByFlashIdAndStatus(flash.getId(), RecipientStatus.JOINED).stream()
+                            .map(r -> new MemberResponse(r.getUser().getId(), r.getUser().getNickname(),
+                                    r.getUser().getProfileImage(), false))
+                            .toList();
+                    return new SentFlashResponse(flash.getId(), flash.getActivity(), flash.getMessage(),
+                            flash.getScheduledAt(), flash.getExpiresAt(), joined);
+                })
                 .toList();
     }
 
