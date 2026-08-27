@@ -79,9 +79,13 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 받은 친구 신청 | `GET /api/friendships/requests` | — | `[{ friendshipId, requesterId, nickname, profileImage }]` |
 | 친구 신청 | `POST /api/friendships` | `{ "addresseeId": 341 }` | `{ friendshipId, status }` (status=`PENDING`, 상대가 이미 나에게 신청했으면 `ACCEPTED`) |
 | 신청 수락 | `POST /api/friendships/{friendshipId}/accept` | — | 200 (body 없음) |
+| 내 초대코드 | `GET /api/friendships/invite-code` | — | `{ code }` (없으면 생성해서 반환. 8자, 혼동문자 제외) |
+| 코드로 친구맺기 | `POST /api/friendships/redeem` | `{ "code": "AB3K9XQ2" }` | `{ friendshipId, status }` (`POST /friendships` 와 동일 규칙) |
 
 - 거절 API는 **없음**(설계 원칙 "거절 안 보임"). 무시 = 그냥 두면 됨.
-- ⚠️ 친구 신청은 **상대의 userId(`addresseeId`)를 알아야** 함. 현재 유저 검색 API 없음 → **백엔드에 `GET /users/me`·친구검색 추가 필요할 수 있음**(앱 설계하며 결정).
+- **친구 추가는 초대코드 방식**(닫힌 절친 원칙에 맞춰 전체검색 대신 채택): 내 코드를 상대에게 알려주고, 상대가 `redeem` 하면 친구 신청이 감. 서로 코드를 교환하면 맞신청으로 즉시 `ACCEPTED`.
+  - `redeem` 은 내부적으로 코드 주인에게 `sendRequest` → 이미 친구면 400, 본인 코드면 400, 없는 코드면 404.
+  - `addresseeId` 직접 신청 경로도 그대로 유효(디버그/내부용).
 
 ### ⚡ 번개 발송
 | 동작 | API | 요청 | 응답 |
@@ -95,6 +99,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 동작 | API | 응답 |
 |---|---|---|
 | 받은 활성 번개 | `GET /api/flashes/received` | `[{ flashId, senderId, senderNickname, senderProfileImage, activity, message, scheduledAt, expiresAt, myStatus }]` |
+| 내가 띄운 활성 번개 | `GET /api/flashes/sent` | `[{ flashId, activity, message, scheduledAt, expiresAt, joinedMembers:[{ userId, nickname, profileImage, sender:false }] }]` (홈 "내가 띄운 번개" 배너용. 시작된 ACTIVE 번개만, 합류자만 포함, `{N}명 모였어요`=joinedMembers 수) |
 | 합류 | `POST /api/flashes/{flashId}/join` | `MeetupRoom`(아래) — 멱등(이미 JOINED면 방만 반환) |
 | 모임방 조회 | `GET /api/flashes/{flashId}/room` | `MeetupRoom` |
 | 장소 설정 | `PATCH /api/flashes/{flashId}/room/place` | 요청 `{ "placeName":"홍대 A카페", "placeLat":37.5, "placeLng":127.0 }` → `MeetupRoom` |
