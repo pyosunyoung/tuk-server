@@ -2,6 +2,7 @@ package com.bungae.friendship.service;
 
 import com.bungae.friendship.domain.Friendship;
 import com.bungae.friendship.dto.FriendRequestResult;
+import com.bungae.friendship.dto.InviteCodeResponse;
 import com.bungae.friendship.repository.FriendshipRepository;
 import com.bungae.global.exception.BadRequestException;
 import com.bungae.global.exception.ForbiddenException;
@@ -22,6 +23,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -147,6 +149,84 @@ class FriendshipServiceTest {
 
         assertThatThrownBy(() -> friendshipService.accept(1L, 404L))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    // ── 초대코드 ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 코드 없으면 8자(혼동문자 제외)로 생성해 반환")
+    void inviteCodeGeneratedWhenAbsent() {
+        given(userRepository.findById(1L)).willReturn(Optional.of(user(1L)));
+        given(userRepository.existsByInviteCode(anyString())).willReturn(false);
+
+        InviteCodeResponse res = friendshipService.getOrCreateInviteCode(1L);
+
+        assertThat(res.code()).matches("[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}");
+    }
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 이미 코드가 있으면 그대로 반환(재생성 안 함)")
+    void inviteCodeIdempotent() {
+        User u = user(1L);
+        u.assignInviteCode("AB3K9XQ2");
+        given(userRepository.findById(1L)).willReturn(Optional.of(u));
+
+        InviteCodeResponse res = friendshipService.getOrCreateInviteCode(1L);
+
+        assertThat(res.code()).isEqualTo("AB3K9XQ2");
+        verify(userRepository, never()).existsByInviteCode(anyString());
+    }
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 존재하지 않는 사용자면 404")
+    void inviteCodeUnknownUser() {
+        given(userRepository.findById(9L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.getOrCreateInviteCode(9L))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 빈/공백 코드면 400")
+    void redeemBlankCode() {
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "   "))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 없는 코드면 404")
+    void redeemUnknownCode() {
+        given(userRepository.findByInviteCode("ZZZZZZZZ")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "zzzzzzzz"))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 본인 코드면 400")
+    void redeemOwnCode() {
+        given(userRepository.findByInviteCode("MYCODE12")).willReturn(Optional.of(user(1L)));
+
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "mycode12"))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 정상 코드면 코드 주인에게 친구신청(PENDING)")
+    void redeemCreatesRequest() {
+        // 코드 주인 = 2번 유저
+        given(userRepository.findByInviteCode("AB3K9XQ2")).willReturn(Optional.of(user(2L)));
+        // 이후 sendRequest(1 -> 2) 경로
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willAnswer(inv -> withId(inv.getArgument(0), 101L));
+
+        FriendRequestResult result = friendshipService.redeemInviteCode(1L, "ab3k9xq2");
+
+        assertThat(result.friendshipId()).isEqualTo(101L);
+        assertThat(result.status()).isEqualTo("PENDING");
     }
 
     private static User user(Long id) {
