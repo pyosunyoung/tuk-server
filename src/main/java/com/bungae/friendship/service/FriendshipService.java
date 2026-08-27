@@ -4,6 +4,7 @@ import com.bungae.friendship.domain.Friendship;
 import com.bungae.friendship.domain.Friendship.FriendshipStatus;
 import com.bungae.friendship.dto.FriendRequestResult;
 import com.bungae.friendship.dto.FriendResponse;
+import com.bungae.friendship.dto.InviteCodeResponse;
 import com.bungae.friendship.dto.ReceivedRequestResponse;
 import com.bungae.friendship.repository.FriendshipRepository;
 import com.bungae.global.exception.BadRequestException;
@@ -15,11 +16,18 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class FriendshipService {
+
+    // 혼동되는 문자(0/O/1/I/L) 제외한 초대코드 알파벳.
+    private static final String CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    private static final int CODE_LENGTH = 8;
+    private static final int CODE_MAX_ATTEMPTS = 10;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
@@ -101,5 +109,52 @@ public class FriendshipService {
         return userRepository.findAllById(friendIds).stream()
                 .map(FriendResponse::from)
                 .toList();
+    }
+
+    /** 내 초대코드 조회(없으면 지연 생성). */
+    @Transactional
+    public InviteCodeResponse getOrCreateInviteCode(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("존재하지 않는 사용자입니다."));
+        if (user.getInviteCode() == null) {
+            user.assignInviteCode(generateUniqueCode());
+        }
+        return new InviteCodeResponse(user.getInviteCode());
+    }
+
+    /**
+     * 초대코드로 친구 맺기. 코드의 주인에게 친구 신청을 보낸다(맞신청이면 즉시 ACCEPTED).
+     * 이후 로직은 {@link #sendRequest(Long, Long)} 와 동일한 규칙을 따른다.
+     */
+    @Transactional
+    public FriendRequestResult redeemInviteCode(Long userId, String rawCode) {
+        String code = rawCode == null ? "" : rawCode.trim().toUpperCase();
+        if (code.isEmpty()) {
+            throw new BadRequestException("초대코드를 입력해주세요.");
+        }
+        User target = userRepository.findByInviteCode(code)
+                .orElseThrow(() -> new NotFoundException("유효하지 않은 초대코드입니다."));
+        if (target.getId().equals(userId)) {
+            throw new BadRequestException("본인의 초대코드입니다.");
+        }
+        return sendRequest(userId, target.getId());
+    }
+
+    private String generateUniqueCode() {
+        for (int attempt = 0; attempt < CODE_MAX_ATTEMPTS; attempt++) {
+            String code = randomCode();
+            if (!userRepository.existsByInviteCode(code)) {
+                return code;
+            }
+        }
+        throw new IllegalStateException("초대코드 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+
+    private String randomCode() {
+        StringBuilder sb = new StringBuilder(CODE_LENGTH);
+        for (int i = 0; i < CODE_LENGTH; i++) {
+            sb.append(CODE_ALPHABET.charAt(RANDOM.nextInt(CODE_ALPHABET.length())));
+        }
+        return sb.toString();
     }
 }

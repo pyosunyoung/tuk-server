@@ -2,7 +2,9 @@ package com.bungae.friendship.controller;
 
 import com.bungae.friendship.dto.FriendRequestResult;
 import com.bungae.friendship.dto.FriendResponse;
+import com.bungae.friendship.dto.InviteCodeResponse;
 import com.bungae.friendship.dto.ReceivedRequestResponse;
+import com.bungae.friendship.dto.RedeemInviteRequest;
 import com.bungae.friendship.dto.SendFriendRequest;
 import com.bungae.friendship.service.FriendshipService;
 import jakarta.validation.Valid;
@@ -50,5 +52,18 @@ public class FriendshipController {
     @GetMapping
     public List<FriendResponse> friends(@AuthenticationPrincipal Long userId) {
         return friendshipService.getFriends(userId);
+    }
+
+    /** 내 친구 초대코드 조회(없으면 생성). */
+    @GetMapping("/invite-code")
+    public InviteCodeResponse inviteCode(@AuthenticationPrincipal Long userId) {
+        return friendshipService.getOrCreateInviteCode(userId);
+    }
+
+    /** 초대코드로 친구 맺기. */
+    @PostMapping("/redeem")
+    public FriendRequestResult redeem(@AuthenticationPrincipal Long userId,
+                                      @Valid @RequestBody RedeemInviteRequest request) {
+        return friendshipService.redeemInviteCode(userId, request.code());
     }
 }
