@@ -11,30 +11,30 @@
 services:
   postgres:
     image: postgres:16
-    container_name: bungae-postgres
+    container_name: tuk-postgres
     environment:
       POSTGRES_USER: postgres      # application.yml 의 spring.datasource.username 과 동일
       POSTGRES_PASSWORD: 1234       # spring.datasource.password 와 동일 (로컬 전용)
-      POSTGRES_DB: bungae           # 기동 시 이 이름의 DB 를 자동 생성
+      POSTGRES_DB: tuk           # 기동 시 이 이름의 DB 를 자동 생성
     ports:
       - "5432:5432"                 # 호스트 5432 → 컨테이너 5432 (localhost 로 접속)
     volumes:
-      - bungae-postgres-data:/var/lib/postgresql/data   # 데이터 영속화(컨테이너 지워도 유지)
+      - tuk-postgres-data:/var/lib/postgresql/data   # 데이터 영속화(컨테이너 지워도 유지)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bungae"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tuk"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7
-    container_name: bungae-redis
+    container_name: tuk-redis
     ports:
       - "6379:6379"                 # spring.data.redis.port 와 동일
     volumes:
-      - bungae-redis-data:/data
+      - tuk-redis-data:/data
 
 # Docker 가 관리하는 명명 볼륨. 실제 데이터 저장 위치(리포지토리에는 안 들어감).
 volumes:
-  bungae-postgres-data:
-  bungae-redis-data:
+  tuk-postgres-data:
+  tuk-redis-data:

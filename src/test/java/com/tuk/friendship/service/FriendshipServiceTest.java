@@ -1,0 +1,242 @@
+package com.tuk.friendship.service;
+
+import com.tuk.friendship.domain.Friendship;
+import com.tuk.friendship.dto.FriendRequestResult;
+import com.tuk.friendship.dto.InviteCodeResponse;
+import com.tuk.friendship.repository.FriendshipRepository;
+import com.tuk.global.exception.BadRequestException;
+import com.tuk.global.exception.ForbiddenException;
+import com.tuk.global.exception.NotFoundException;
+import com.tuk.user.domain.User;
+import com.tuk.user.repository.UserRepository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+@ExtendWith(MockitoExtension.class)
+class FriendshipServiceTest {
+
+    @Mock FriendshipRepository friendshipRepository;
+    @Mock UserRepository userRepository;
+    @InjectMocks FriendshipService friendshipService;
+
+    @Test
+    @DisplayName("sendRequest: 자기 자신에게 신청하면 400")
+    void sendToSelf() {
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 1L))
+                .isInstanceOf(BadRequestException.class);
+    }
+    //given 모카 데이터 세팅
+    @Test
+    @DisplayName("sendRequest: 존재하지 않는 사용자면 404")
+    void sendToUnknownUser() {
+        given(userRepository.findById(2L)).willReturn(Optional.empty()); // 2번 유저를 호출 시 Optional.empty 데이터가 없다로 설정.
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("sendRequest: 관계 없으면 새 PENDING 생성")
+    void sendCreatesPending() {
+        User addressee = user(2L);
+        given(userRepository.findById(2L)).willReturn(Optional.of(addressee));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willAnswer(inv -> withId(inv.getArgument(0), 100L));
+
+        FriendRequestResult result = friendshipService.sendRequest(1L, 2L);
+
+        assertThat(result.friendshipId()).isEqualTo(100L);
+        assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    @DisplayName("sendRequest: 동시 신청 경합에서 uq 위반(DataIntegrityViolation)이면 400 으로 번역")
+    void sendRaceLoserBecomes400() {
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willThrow(new DataIntegrityViolationException("uq_friend_pair"));
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("sendRequest: 상대가 이미 나에게 신청했으면 맞신청으로 즉시 수락(ACCEPTED), 새로 저장 안 함")
+    void sendAutoAcceptsReversePending() {
+        // 기존: 2 -> 1 (내가 수신자) PENDING
+        Friendship reverse = Friendship.builder().requester(user(2L)).addressee(user(1L)).build();
+        withId(reverse, 55L);
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(reverse));
+
+        FriendRequestResult result = friendshipService.sendRequest(1L, 2L);
+
+        assertThat(result.status()).isEqualTo("ACCEPTED");
+        assertThat(reverse.getStatus()).isEqualTo(Friendship.FriendshipStatus.ACCEPTED);
+        verify(friendshipRepository, never()).saveAndFlush(any(Friendship.class));
+    }
+
+    @Test
+    @DisplayName("sendRequest: 이미 친구면 400")
+    void sendWhenAlreadyFriends() {
+        Friendship accepted = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        accepted.accept();
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(accepted));
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("sendRequest: 내가 이미 신청한 상태면 400(중복)")
+    void sendWhenAlreadyRequested() {
+        // 기존: 1 -> 2 (내가 신청자) PENDING
+        Friendship mine = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(mine));
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("accept: 수신자가 아니면 403")
+    void acceptByNonAddressee() {
+        Friendship f = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        given(friendshipRepository.findById(55L)).willReturn(Optional.of(f));
+
+        // 나(99)는 수신자(2)가 아님
+        assertThatThrownBy(() -> friendshipService.accept(99L, 55L))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("accept: 수신자 본인이면 ACCEPTED 로 전환")
+    void acceptByAddressee() {
+        Friendship f = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        given(friendshipRepository.findById(55L)).willReturn(Optional.of(f));
+
+        friendshipService.accept(2L, 55L);
+
+        assertThat(f.getStatus()).isEqualTo(Friendship.FriendshipStatus.ACCEPTED);
+    }
+
+    @Test
+    @DisplayName("accept: 없는 신청이면 404")
+    void acceptUnknown() {
+        given(friendshipRepository.findById(404L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.accept(1L, 404L))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    // ── 초대코드 ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 코드 없으면 8자(혼동문자 제외)로 생성해 반환")
+    void inviteCodeGeneratedWhenAbsent() {
+        given(userRepository.findById(1L)).willReturn(Optional.of(user(1L)));
+        given(userRepository.existsByInviteCode(anyString())).willReturn(false);
+
+        InviteCodeResponse res = friendshipService.getOrCreateInviteCode(1L);
+
+        assertThat(res.code()).matches("[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}");
+    }
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 이미 코드가 있으면 그대로 반환(재생성 안 함)")
+    void inviteCodeIdempotent() {
+        User u = user(1L);
+        u.assignInviteCode("AB3K9XQ2");
+        given(userRepository.findById(1L)).willReturn(Optional.of(u));
+
+        InviteCodeResponse res = friendshipService.getOrCreateInviteCode(1L);
+
+        assertThat(res.code()).isEqualTo("AB3K9XQ2");
+        verify(userRepository, never()).existsByInviteCode(anyString());
+    }
+
+    @Test
+    @DisplayName("getOrCreateInviteCode: 존재하지 않는 사용자면 404")
+    void inviteCodeUnknownUser() {
+        given(userRepository.findById(9L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.getOrCreateInviteCode(9L))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 빈/공백 코드면 400")
+    void redeemBlankCode() {
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "   "))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 없는 코드면 404")
+    void redeemUnknownCode() {
+        given(userRepository.findByInviteCode("ZZZZZZZZ")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "zzzzzzzz"))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 본인 코드면 400")
+    void redeemOwnCode() {
+        given(userRepository.findByInviteCode("MYCODE12")).willReturn(Optional.of(user(1L)));
+
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "mycode12"))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 정상 코드면 코드 주인에게 친구신청(PENDING)")
+    void redeemCreatesRequest() {
+        // 코드 주인 = 2번 유저
+        given(userRepository.findByInviteCode("AB3K9XQ2")).willReturn(Optional.of(user(2L)));
+        // 이후 sendRequest(1 -> 2) 경로
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willAnswer(inv -> withId(inv.getArgument(0), 101L));
+
+        FriendRequestResult result = friendshipService.redeemInviteCode(1L, "ab3k9xq2");
+
+        assertThat(result.friendshipId()).isEqualTo(101L);
+        assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    private static User user(Long id) {
+        User u = User.builder().nickname("u" + id).provider("kakao").providerId("pid" + id).build();
+        ReflectionTestUtils.setField(u, "id", id);
+        return u;
+    }
+
+    private static Friendship withId(Friendship friendship, Long id) {
+        ReflectionTestUtils.setField(friendship, "id", id);
+        return friendship;
+    }
+}

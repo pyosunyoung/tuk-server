@@ -1,6 +1,7 @@
-# 번개 (bungae) — 프로젝트 컨텍스트
+# 툭 (Tuk) — 프로젝트 컨텍스트
 
-> 코드네임 `bungae`. 정식 제품명은 미정 — 내부 코드·DB·패키지는 계속 `bungae`를 쓴다.
+> 제품명 **툭(Tuk)** 확정. 코드·DB·패키지도 `tuk` 로 통일했다(구 코드네임 `bungae`).
+> 문서에 나오는 "번개"는 제품명이 아니라 **기능 이름**(Flash — 친구들에게 띄우는 즉흥 초대)이다.
 
 ## 무엇을 만드는가
 친한 친구들끼리, **거절 걱정 없이 "지금 볼래?"를 띄우는** 즉흥 만남 앱.
@@ -25,11 +26,11 @@
 
 ## 아키텍처
 - 레이어드: Controller → Service → Repository
-- 패키지: 도메인별 (`com.bungae.user` / `friendship` / `presence` / `flash` / `notification` / `global`)
+- 패키지: 도메인별 (`com.tuk.user` / `friendship` / `presence` / `flash` / `notification` / `global`)
 - 실시간: 콜 켜기·번개 발송·합류는 REST로 트리거하고, 결과는 WebSocket(STOMP)으로 "절친 중 접속자"에게 전파. 세션 레지스트리 `userId → WS 세션`. 다중 서버 확장 시 Redis Pub/Sub.
 - 소셜 로그인: 앱이 SDK로 소셜 토큰 획득 → 백엔드가 검증 → 자체 JWT(access+refresh, rotation) 발급. WebSocket은 CONNECT 헤더의 JWT로 인증.
 
-## 엔티티 (`com.bungae.*.domain`)
+## 엔티티 (`com.tuk.*.domain`)
 User, Friendship(자기참조 N:N, status), Flash(+scheduled_at), FlashRecipient(status: PENDING/JOINED), MeetupRoom(Flash와 1:1), DeviceToken(FCM 토큰), Presence(`@RedisHash` + `@TimeToLive`), BaseTimeEntity, Activity(enum).
 
 ## 코딩 컨벤션

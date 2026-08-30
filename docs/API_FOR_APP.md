@@ -1,4 +1,4 @@
-# 번개(bungae) — 앱용 API 계약서
+# 툭(Tuk) — 앱용 API 계약서
 
 Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 뽑은 것으로, **실제 응답 필드명과 1:1로 일치**한다.
 정본은 실행 중 서버의 Swagger: `http://localhost:8080/swagger-ui.html` (스키마 `/v3/api-docs`).

@@ -8,7 +8,7 @@
 
 spring:
   datasource:
-    # url: jdbc:postgresql://<host>:5432/bungae
+    # url: jdbc:postgresql://<host>:5432/tuk
     # username: <user>
     password: <실제_DB_비밀번호>
 
