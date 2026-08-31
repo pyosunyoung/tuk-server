@@ -50,6 +50,7 @@ User, Friendship(자기참조 N:N, status), Flash(+scheduled_at), FlashRecipient
 
 ## 주요 엔드포인트
 - 인증: `POST /api/auth/login` · `/refresh` · `/logout`
+- 내 정보: `GET /api/users/me` (앱이 '나'를 판별하는 기준: 모임방 members 표시·프로필 아바타)
 - 친구: `POST /api/friendships` · `POST /{id}/accept` · `GET /requests` · `GET /api/friendships`
 - Presence: `POST/DELETE /api/presence` · `GET /me` · `GET /friends`(지금 한가한 친구)
 - 번개: `POST /api/flashes` · `GET /received` · `POST /{id}/join` · `GET /{id}/room` · `PATCH /{id}/room/place`

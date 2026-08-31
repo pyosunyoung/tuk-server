@@ -57,9 +57,14 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 ### 🔔 앱 시작 시(로그인 직후 1회)
 | 동작 | API | 요청 |
 |---|---|---|
+| **내 정보 조회** | `GET /api/users/me` | (body 없음) → `{ userId, nickname, profileImage }` |
 | FCM 기기토큰 등록 | `POST /api/device-tokens` | `{ "token":"<FCM 토큰>", "platform":"ANDROID" }` |
 | 로그아웃 시 토큰 해제 | `DELETE /api/device-tokens` | `{ "token":"<FCM 토큰>" }` |
 | 로그아웃 | `POST /api/auth/logout` | (body 없음) |
+
+> `userId` 는 앱이 **"이게 나"를 판단하는 기준**이다. 모임방 참여자 목록에서 '나' 표시,
+> 장소를 정한 사람이 나인지, 홈 프로필 아바타에 쓴다. 로그인 직후 받아 세션 동안 들고 있으면 된다.
+> 토큰은 유효한데 유저가 없으면(탈퇴·DB 초기화) `404` — 앱은 세션을 지우고 로그인 화면으로.
 
 ### 🏠 홈 — "지금 한가한 친구"
 | 동작 | API | 응답 |

@@ -87,6 +87,6 @@ public class AuthService {
     private String resolveNickname(SocialUserInfo info) {
         return (info.nickname() != null && !info.nickname().isBlank())
                 ? info.nickname()
-                : "번개유저";
+                : "툭유저";
     }
 }
