@@ -209,7 +209,9 @@ public class FlashService {
     public MeetupRoomResponse setPlace(Long userId, Long flashId, SetPlaceRequest request) {
         MeetupRoom room = requireRoom(flashId);
         checkMember(userId, room.getFlash());
-        room.setPlace(request.placeName(), request.placeLat(), request.placeLng());
+        // 프록시라 select 없이 FK 만 채운다. 응답에 쓸 닉네임은 members 에서 찾는다.
+        room.setPlace(request.placeName(), request.placeLat(), request.placeLng(),
+                userRepository.getReferenceById(userId));
         return buildRoomResponse(room);
     }
 
@@ -243,6 +245,14 @@ public class FlashService {
                     members.add(new MemberResponse(member.getId(), member.getNickname(), member.getProfileImage(), false));
                 }); // 수신자들 멤버 추가
 
+        // 장소를 정한 사람. 항상 멤버이므로 members 에서 닉네임을 찾는다(추가 조회 없음).
+        Long placeSetById = room.getPlaceSetBy() != null ? room.getPlaceSetBy().getId() : null;
+        String placeSetByNickname = members.stream()
+                .filter(m -> m.userId().equals(placeSetById))
+                .map(MemberResponse::nickname)
+                .findFirst()
+                .orElse(null);
+
         return new MeetupRoomResponse(
                 room.getId(),
                 flash.getId(),
@@ -250,6 +260,8 @@ public class FlashService {
                 room.getPlaceName(),
                 room.getPlaceLat(),
                 room.getPlaceLng(),
+                placeSetById,
+                placeSetByNickname,
                 room.getStatus().name(),
                 members);
     }

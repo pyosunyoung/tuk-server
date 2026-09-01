@@ -114,6 +114,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 {
   "roomId": 20, "flashId": 85, "activity": "MEAL",
   "placeName": null, "placeLat": null, "placeLng": null,
+  "placeSetById": null, "placeSetByNickname": null,
   "status": "OPEN",
   "members": [
     { "userId": 340, "nickname": "...", "profileImage": null, "sender": true },
@@ -122,6 +123,9 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 }
 ```
 - `members` = 보낸 사람(`sender:true`) + **JOINED 수신자만**. 아직 합류 안 한 사람은 안 보임.
+- `placeSetById`/`placeSetByNickname` = **장소를 정한 멤버**. 아무도 안 정했으면 둘 다 null.
+  장소는 멤버 누구나 다시 정할 수 있고, **마지막으로 바꾼 사람**으로 덮인다.
+  (`placeSetById == 내 userId` 면 "내가 정했어요")
 - 합류 권한: 초대받은(수신 레코드 있는) 사람만. 아니면 403.
 - **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`) push(§2).
 

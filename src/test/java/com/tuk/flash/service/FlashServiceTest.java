@@ -165,15 +165,50 @@ class FlashServiceTest {
     }
 
     @Test
-    @DisplayName("setPlace: 멤버(보낸이)면 장소를 설정한다")
+    @DisplayName("setPlace: 멤버(보낸이)면 장소를 설정하고, 정한 사람을 함께 돌려준다")
     void setPlaceBySender() {
-        Flash flash = flash(10L, user(1L, "보낸이"));
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
         given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
         given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
 
         MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대 A카페", 37.5, 127.0));
 
         assertThat(res.placeName()).isEqualTo("홍대 A카페");
+        assertThat(res.placeSetById()).isEqualTo(1L);
+        assertThat(res.placeSetByNickname()).isEqualTo("보낸이");
+    }
+
+    @Test
+    @DisplayName("setPlace: 합류자가 정하면 그 사람이 '정한 사람'이 된다(마지막에 바꾼 사람으로 덮임)")
+    void setPlaceByJoiner() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        User joiner = user(2L, "합류자");
+        FlashRecipient joined = FlashRecipient.builder().flash(flash).user(joiner).build();
+        joined.join();
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndUserId(10L, 2L)).willReturn(Optional.of(joined));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of(joined));
+        given(userRepository.getReferenceById(2L)).willReturn(joiner);
+
+        MeetupRoomResponse res = flashService.setPlace(2L, 10L, new SetPlaceRequest("학관 앞", null, null));
+
+        assertThat(res.placeSetById()).isEqualTo(2L);
+        assertThat(res.placeSetByNickname()).isEqualTo("합류자");
+    }
+
+    @Test
+    @DisplayName("getRoom: 아무도 장소를 안 정했으면 정한 사람은 null")
+    void roomWithoutPlaceHasNoSetter() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+
+        MeetupRoomResponse res = flashService.getRoom(1L, 10L);
+
+        assertThat(res.placeSetById()).isNull();
+        assertThat(res.placeSetByNickname()).isNull();
     }
 
     // --- 내가 띄운 번개 (GET /sent) ---
