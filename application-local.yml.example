@@ -20,3 +20,8 @@ jwt:
 fcm:
   enabled: false
   # credentials-path: /절대/경로/service-account.json
+
+# CORS 허용 오리진 (웹 개발 서버가 다른 포트일 때). 쉼표로 여러 개.
+# app:
+#   cors:
+#     allowed-origins: http://localhost:3000,http://localhost:5173

@@ -18,6 +18,9 @@ repositories {
 }
 
 dependencies {
+	// 헬스체크 — 배포 환경(로드밸런서·컨테이너 오케스트레이터)이 살아있는지 물어보는 창구.
+	// health 만 노출한다(아래 application.yml).
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	// DB 마이그레이션 — 스키마의 진실원. ddl-auto 는 validate 라 여기서 안 만들면 기동 실패한다.
 	// Boot 4 는 자동구성이 모듈로 쪼개져서 spring-boot-flyway 가 있어야 마이그레이션이 실행된다

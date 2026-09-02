@@ -68,18 +68,32 @@ User, Friendship(자기참조 N:N, status), Flash(+scheduled_at), FlashRecipient
 https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
 
 ## 현재 상태
-**MVP 백엔드 구현 완료** (구현 순서 ①~⑦). 로컬 기준 전체 테스트 68개 통과, 4대 설계 원칙 코드 반영 확인.
+**MVP 백엔드 구현 완료** (구현 순서 ①~⑦). 로컬 기준 전체 테스트 82개 통과, 4대 설계 원칙 코드 반영 확인.
+앱(Flutter)까지 붙여 카카오 로그인·친구·presence·번개·STOMP 실시간 전 구간 실검증 완료.
 
 ### 아직 안 된 것 (배포 전 필수)
 0. **기본 활성 프로필이 `dev`** (`application.yml`의 `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:dev}`) — 로컬 편의를 위해 어떤 방식으로 켜도 dev 로그인이 되게 함. **운영 배포 시 반드시 `SPRING_PROFILES_ACTIVE=prod`(등)로 덮을 것.** dev 프로필은 `DevSocialClient`(아무 문자열로 로그인)를 열기 때문에 운영에서 켜지면 보안 구멍이다.
 1. ~~비밀값 외부화~~ ✅ **구조 완료** — 모든 환경값이 `${ENV:dev기본값}`. 실제 값은 환경변수 또는 `application-local.yml`(gitignore)로 오버라이드. 커밋 파일엔 로컬 dev 기본값만. 운영 배포 시 실제 값을 env 로 주입만 하면 됨(`application-local.yml.example` 참고). **주의: 실제 카카오 키·운영 비번을 `application.yml`에 직접 쓰지 말 것.**
-2. **`ddl-auto: update` → `validate` + Flyway** — 스키마 확정됐으니 마이그레이션으로 전환.
-   (주의: `update`는 기존 테이블에 유니크 제약을 새로 안 걸어줌. 제약을 바꾸면 테이블 재생성 필요)
-3. **CORS 개방 상태** — `allowedOriginPatterns("*")` + credentials. 배포 시 앱/웹 오리진으로 좁힐 것.
+2. ~~`ddl-auto: update` → `validate` + Flyway~~ ✅ **완료** — 스키마의 진실원은 이제 `src/main/resources/db/migration`.
+   `V1__init.sql` 이 지금까지의 스키마 baseline. **앞으로 엔티티만 고치면 기동이 실패한다** — 반드시 V2, V3... 추가할 것.
+   기존 개발 DB 는 `baseline-on-migrate: true` 로 V1 을 건너뛰고, 빈 DB(운영)는 V1 부터 적용된다(둘 다 실검증).
+   ⚠️ Boot 4 는 자동구성이 모듈로 쪼개져서 **`org.springframework.boot:spring-boot-flyway` 가 있어야** 마이그레이션이 돈다
+   (`flyway-core` 만 넣으면 클래스패스에만 있고 조용히 아무것도 안 함 — 실제로 겪음).
+3. ~~CORS 개방 상태~~ ✅ **완료** — `app.cors.allowed-origins`(기본 `http://localhost:3000`)에서 오리진을 읽는다.
+   운영은 `CORS_ALLOWED_ORIGINS` 로 실제 도메인 주입. `allowCredentials=true` 라 와일드카드는 못 쓴다(스펙상 금지).
 4. **Apple 로그인 미구현** — `SocialClient` 구현체는 Kakao만. Apple은 id_token 공개키 검증 필요.
 5. **FCM 실제 키 미연동** — 기본은 `LoggingPushSender`(로그만). `FCM_ENABLED=true` + `FCM_CREDENTIALS_PATH` 주면 실제 발송으로 전환(코드 변경 불필요).
-6. **Swagger UI 개발용 개방** — `/swagger-ui/**`·`/v3/api-docs/**` 가 permitAll. 배포 시 차단하거나 인증 걸 것(운영 프로필에서 `springdoc.swagger-ui.enabled=false`, `springdoc.api-docs.enabled=false` 또는 SecurityConfig 에서 permitAll 제거).
-7. **엔드투엔드 — REST 검증됨 / STOMP 미검증** — 실제 카카오 로그인 → 친구·presence·번개 REST 흐름은 로컬 실서버로 검증 완료(카카오 실계정 유저 생성 확인). WebSocket(STOMP) 실연결(구독→실시간 수신)은 앱 클라이언트 붙일 때 확인.
+6. ~~Swagger UI 개발용 개방~~ ✅ **완료** — `application-prod.yml` 에서 `springdoc.*.enabled=false`,
+   그리고 `SecurityConfig` 가 그 값을 보고 **permitAll 등록 자체를 건너뛴다**(운영에서 401).
+7. ~~엔드투엔드 검증~~ ✅ **완료** — 카카오 로그인(계정·카카오톡 앱 양쪽)·친구·presence·번개 REST + STOMP 실시간까지
+   에뮬레이터와 실기기(갤럭시 S25)로 검증.
+8. **헬스체크** ✅ **완료** — actuator 추가, `health` 만 노출(`show-details: never`). 나머지 actuator 엔드포인트는 401.
+
+### 운영 기동 방법
+`SPRING_PROFILES_ACTIVE=prod` + 아래 환경변수 주입:
+`DB_URL` `DB_USERNAME` `DB_PASSWORD` `REDIS_HOST` `REDIS_PORT` `JWT_SECRET`(32바이트+) `CORS_ALLOWED_ORIGINS`
+(선택: `FCM_ENABLED` `FCM_CREDENTIALS_PATH`)
+운영 프로필 검증 완료: 헬스 200 / Swagger·dev로그인·다른 actuator 401 / 허용 오리진만 CORS 통과.
 
 ### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
 - 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리
