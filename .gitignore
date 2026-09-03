@@ -39,6 +39,12 @@ out/
 ### Secrets / local overrides (절대 커밋 금지) ###
 application-local.yml
 application-local.yaml
+
+### 비밀 키 — 절대 커밋 금지 ###
+# Firebase 서비스 계정 키(FCM 발송 권한). 유출되면 남이 우리 앱 이름으로 푸시를 보낼 수 있다.
+firebase-service-account*.json
+*-firebase-adminsdk-*.json
+secrets/
 .env
 .env.*
 # Firebase / FCM 서비스 계정 키

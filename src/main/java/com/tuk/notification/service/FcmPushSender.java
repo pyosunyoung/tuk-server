@@ -61,9 +61,14 @@ public class FcmPushSender implements PushSender {
                 continue;
             }
             MessagingErrorCode code = each.getException().getMessagingErrorCode();
+            // 죽은 토큰이 아닌 실패(설정 오류·권한·쿼터 등)는 조용히 넘기면 원인을 영영 못 찾는다.
+            log.warn("FCM 발송 실패 code={} msg={}", code, each.getException().getMessage());
             if (code == MessagingErrorCode.UNREGISTERED || code == MessagingErrorCode.INVALID_ARGUMENT) {
                 dead.add(tokens.get(i));
             }
+        }
+        if (dead.isEmpty() && response.getFailureCount() == 0) {
+            log.info("FCM 발송 성공 count={}", response.getSuccessCount());
         }
         return dead;
     }
