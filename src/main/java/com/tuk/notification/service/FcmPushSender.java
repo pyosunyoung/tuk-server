@@ -1,6 +1,8 @@
 package com.tuk.notification.service;
 
 import com.tuk.notification.dto.PushMessage;
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -26,6 +28,9 @@ public class FcmPushSender implements PushSender {
 
     private static final Logger log = LoggerFactory.getLogger(FcmPushSender.class);
 
+    /** 앱이 만든 알림 채널 id 와 같아야 한다(앱: PushService._channel, AndroidManifest 기본 채널). */
+    private static final String ANDROID_CHANNEL_ID = "tuk_flash";
+
     private final FirebaseMessaging firebaseMessaging;
 
     public FcmPushSender(FirebaseMessaging firebaseMessaging) {
@@ -39,6 +44,18 @@ public class FcmPushSender implements PushSender {
                 .setNotification(Notification.builder()
                         .setTitle(message.title())
                         .setBody(message.body())
+                        .build())
+                // 안드로이드 전용 설정이 없으면 '보통' 우선순위로 나간다 →
+                // 화면 위에 뜨는 배너(heads-up)가 안 생기고, Doze 중이면 전달도 늦어진다.
+                // 번개는 "지금 볼래?" 라 늦게 도착하면 의미가 없으므로 HIGH.
+                .setAndroidConfig(AndroidConfig.builder()
+                        .setPriority(AndroidConfig.Priority.HIGH)
+                        .setNotification(AndroidNotification.builder()
+                                .setChannelId(ANDROID_CHANNEL_ID)
+                                .setPriority(AndroidNotification.Priority.HIGH)
+                                .setDefaultSound(true)
+                                .setDefaultVibrateTimings(true)
+                                .build())
                         .build())
                 .putAllData(message.data())
                 .build();
