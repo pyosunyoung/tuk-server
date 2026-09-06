@@ -89,11 +89,24 @@ https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
    에뮬레이터와 실기기(갤럭시 S25)로 검증.
 8. **헬스체크** ✅ **완료** — actuator 추가, `health` 만 노출(`show-details: never`). 나머지 actuator 엔드포인트는 401.
 
-### 운영 기동 방법
-`SPRING_PROFILES_ACTIVE=prod` + 아래 환경변수 주입:
-`DB_URL` `DB_USERNAME` `DB_PASSWORD` `REDIS_HOST` `REDIS_PORT` `JWT_SECRET`(32바이트+) `CORS_ALLOWED_ORIGINS`
-(선택: `FCM_ENABLED` `FCM_CREDENTIALS_PATH`)
+### 운영 기동 방법 (Docker)
+VM 한 대에 앱 + PostgreSQL + Redis 를 통째로 올리는 구성.
+
+```bash
+cp .env.example .env                 # 실제 값 채우기 (커밋 안 됨)
+# FCM 쓰면 firebase-service-account.json 을 이 디렉터리에 두고 .env 의 FCM_ENABLED=true
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml logs -f app
+```
+
+- **`TZ=Asia/Seoul` 필수** — 번개 만료가 서버 벽시계(LocalDateTime) 기준이라 UTC 컨테이너면 9시간 어긋난다. Dockerfile·compose 양쪽에 박아뒀다.
+- DB·Redis 는 포트를 외부에 열지 않는다(`expose` 만). 앱만 내부 네트워크로 붙는다.
+- Redis 는 AOF 켜둔다 — refresh 토큰이 여기 있어서 끄면 재시작 시 전원 재로그인.
+- 서비스 계정 키는 **이미지에 굽지 않고** 볼륨으로 주입한다(`.dockerignore` 로도 차단).
+- 직접 실행하려면: `SPRING_PROFILES_ACTIVE=prod` + `DB_URL` `DB_USERNAME` `DB_PASSWORD` `REDIS_HOST` `REDIS_PORT` `JWT_SECRET`(32바이트+) `CORS_ALLOWED_ORIGINS` (선택 `FCM_ENABLED` `FCM_CREDENTIALS_PATH`)
+
 운영 프로필 검증 완료: 헬스 200 / Swagger·dev로그인·다른 actuator 401 / 허용 오리진만 CORS 통과.
+⚠️ 이미지 빌드 자체는 개발 PC 에 Docker 가 없어 **아직 실행해 본 적 없다** — 배포 서버에서 첫 검증.
 
 ### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
 - 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리

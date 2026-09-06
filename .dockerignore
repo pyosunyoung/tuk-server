@@ -1,0 +1,15 @@
+# 빌드 컨텍스트에서 제외 — 이미지에 들어가면 안 되거나, 넣을 이유가 없는 것들
+.git
+.gradle
+build
+*.log
+
+# 비밀값 (이미지에 절대 굽지 않는다 — 실행 시 볼륨/환경변수로 주입)
+application-local.yml
+*service-account*.json
+*-firebase-adminsdk-*.json
+.env
+
+.idea
+*.iml
+HELP.md
