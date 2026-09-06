@@ -4,6 +4,8 @@ import com.tuk.flash.dto.FlashPushEvent;
 import com.tuk.flash.ws.FlashBroadcastEvent;
 import com.tuk.notification.dto.PushMessage;
 import com.tuk.presence.ws.WebSocketSessionRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -24,6 +26,8 @@ import java.util.Map;
 @Component
 public class FlashPushListener {
 
+    private static final Logger log = LoggerFactory.getLogger(FlashPushListener.class);
+
     private final WebSocketSessionRegistry sessionRegistry;
     private final PushNotificationService pushNotificationService;
 
@@ -38,6 +42,8 @@ public class FlashPushListener {
         List<Long> offlineTargets = event.targetUserIds().stream()
                 .filter(userId -> !sessionRegistry.isOnline(userId))
                 .toList();
+        log.info("번개 푸시 대상: 전체 {}명 중 오프라인 {}명 (온라인은 WebSocket 으로)",
+                event.targetUserIds().size(), offlineTargets.size());
         if (offlineTargets.isEmpty()) {
             return;
         }

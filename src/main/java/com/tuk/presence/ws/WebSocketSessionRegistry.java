@@ -1,5 +1,7 @@
 package com.tuk.presence.ws;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
@@ -21,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class WebSocketSessionRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(WebSocketSessionRegistry.class);
+
     private final Map<Long, Set<String>> userToSessions = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionToUser = new ConcurrentHashMap<>();
     //userToSessions: 유저 ID를 넣으면 그 유저가 연결한 모든 세션 리스트를 줍니다. (예: "1번 유저 지금 폰이랑 PC로 접속 중이네?")
@@ -29,6 +33,7 @@ public class WebSocketSessionRegistry {
     public void register(Long userId, String sessionId) {
         userToSessions.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet()).add(sessionId);
         sessionToUser.put(sessionId, userId);
+        log.info("WS 연결 userId={} session={} (온라인 {}명)", userId, sessionId, userToSessions.size());
     }
 
     public void unregister(String sessionId) {
@@ -43,6 +48,7 @@ public class WebSocketSessionRegistry {
                 userToSessions.remove(userId);
             }
         }
+        log.info("WS 해제 userId={} session={} (온라인 {}명)", userId, sessionId, userToSessions.size());
     }
 
     public boolean isOnline(Long userId) {
