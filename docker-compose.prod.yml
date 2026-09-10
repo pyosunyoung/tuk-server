@@ -32,8 +32,27 @@ services:
     volumes:
       # 왼쪽 경로에 서비스 계정 키를 두면 컨테이너 안에서 읽는다(읽기 전용)
       - ./firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+    # 외부 노출은 Caddy 가 맡는다. 앱은 내부 네트워크에서만 접근된다.
+    expose:
+      - "8080"
+
+  # HTTPS 종단 + 리버스 프록시. 도메인만 있으면 인증서를 알아서 발급·갱신한다.
+  caddy:
+    image: caddy:2
+    container_name: tuk-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      TUK_DOMAIN: ${TUK_DOMAIN:?도메인을 .env 에 넣어주세요 (예: tuk.example.com)}
     ports:
-      - "8080:8080"
+      - "80:80"     # Let's Encrypt 인증(HTTP-01)에 필요. HTTPS 로 자동 리다이렉트된다
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # 발급받은 인증서 — 지우면 재발급(Let's Encrypt 한도 주의)
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
 
   postgres:
     image: postgres:16
@@ -71,3 +90,6 @@ services:
 volumes:
   tuk-postgres-data:
   tuk-redis-data:
+  caddy-data:
+  caddy-config:
+  caddy-logs:

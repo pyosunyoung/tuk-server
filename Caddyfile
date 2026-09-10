@@ -1,0 +1,23 @@
+# Caddy — 앞단에서 요청을 받아 뒤의 Spring Boot 로 넘긴다.
+# 도메인만 적어두면 Let's Encrypt 인증서를 자동 발급·갱신한다(인증서 관리 작업 없음).
+#
+# {$TUK_DOMAIN} 은 .env 에서 온다. 예: tuk.example.com
+# ⚠️ 인증서를 받으려면 그 도메인의 A 레코드가 이 서버 공인 IP 를 가리키고 있어야 한다.
+
+{$TUK_DOMAIN} {
+	# 응답 압축 (모바일 데이터 절약)
+	encode gzip
+
+	# 뒤의 앱으로 전달. WebSocket(STOMP) 업그레이드도 그대로 통과한다.
+	reverse_proxy app:8080 {
+		# 앱이 원래 요청자 IP·프로토콜을 알 수 있게(로그·보안용)
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

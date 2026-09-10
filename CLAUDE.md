@@ -99,6 +99,11 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs -f app
 ```
 
+구성: **Caddy(80/443) → app(8080) → postgres·redis**. 앱·DB·Redis 는 외부에 포트를 열지 않는다.
+Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신한다
+(발급 조건: 그 도메인의 A 레코드가 서버 공인 IP 를 가리킬 것).
+**안드로이드는 평문 HTTP 를 기본 차단하므로 배포 앱에는 HTTPS 가 필수다.**
+
 - **`TZ=Asia/Seoul` 필수** — 번개 만료가 서버 벽시계(LocalDateTime) 기준이라 UTC 컨테이너면 9시간 어긋난다. Dockerfile·compose 양쪽에 박아뒀다.
 - DB·Redis 는 포트를 외부에 열지 않는다(`expose` 만). 앱만 내부 네트워크로 붙는다.
 - Redis 는 AOF 켜둔다 — refresh 토큰이 여기 있어서 끄면 재시작 시 전원 재로그인.
