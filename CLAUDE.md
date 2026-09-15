@@ -111,7 +111,9 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 - 직접 실행하려면: `SPRING_PROFILES_ACTIVE=prod` + `DB_URL` `DB_USERNAME` `DB_PASSWORD` `REDIS_HOST` `REDIS_PORT` `JWT_SECRET`(32바이트+) `CORS_ALLOWED_ORIGINS` (선택 `FCM_ENABLED` `FCM_CREDENTIALS_PATH`)
 
 운영 프로필 검증 완료: 헬스 200 / Swagger·dev로그인·다른 actuator 401 / 허용 오리진만 CORS 통과.
-⚠️ 이미지 빌드 자체는 개발 PC 에 Docker 가 없어 **아직 실행해 본 적 없다** — 배포 서버에서 첫 검증.
+**배포 완료(2026-09-15)**: Vultr 서울 `158.247.230.36`, 코드 위치 `/opt/tuk-server`, 도메인 `tuk.158-247-230-36.sslip.io`(임시 — 진짜 도메인 사면 `.env` 의 `TUK_DOMAIN`·`CORS_ALLOWED_ORIGINS` 만 교체).
+리포가 비공개라 서버에서 clone 하지 않고 로컬에서 `git archive HEAD | ssh root@158.247.230.36 'tar -x -C /opt/tuk-server'` 로 보낸다.
+외부 검증: health 200 / HTTP→HTTPS 308 / Swagger·actuator·dev로그인 401 / 타 오리진 CORS 403 / `/ws` 101 / 8080 외부 차단. 이미지 빌드 약 4분, 앱 기동 약 40초.
 
 ### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
 - 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리
