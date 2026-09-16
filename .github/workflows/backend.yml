@@ -137,8 +137,13 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          # 키 형식이 깨졌으면 여기서 바로 알 수 있게
-          ssh-keygen -l -f ~/.ssh/deploy_key > /dev/null
+          # 개인키인지 검사. -l 은 공개키(.pub)를 넣어도 통과하므로, 개인키에서만 되는 -y(공개키 유도)로 확인한다
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>&1; then
+            echo "::error::DEPLOY_SSH_KEY 가 개인키가 아닙니다. '-----BEGIN OPENSSH PRIVATE KEY-----' 로 시작하는 파일 전체를 넣어주세요 (.pub 아님)"
+            exit 1
+          fi
+          # 지문은 공개해도 되는 값 — 서버 authorized_keys 의 지문과 대조용
+          echo "배포 키 지문: $(ssh-keygen -l -f ~/.ssh/deploy_key | awk '{print $2}')"
 
       - name: Deploy
         env:
@@ -148,7 +153,7 @@ jobs:
         run: |
           # stdin: 1행 = GHCR 토큰, 이후 = 설정 파일 tar (tuk-deploy 가 이 순서로 읽는다)
           { printf '%s\n' "$GHCR_TOKEN"; tar -c -f - docker-compose.prod.yml Caddyfile; } \
-            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
                 "$DEPLOY_USER@$HOST" "deploy $GITHUB_SHA $GITHUB_ACTOR"
 
       - name: Smoke test (public HTTPS)
