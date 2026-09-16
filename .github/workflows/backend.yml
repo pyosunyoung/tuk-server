@@ -11,8 +11,11 @@ name: backend
 on:
   push:
     branches: [main]
+    # 문서만 바뀐 커밋은 테스트·배포를 돌리지 않는다
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 # 같은 브랜치에 연달아 push 하면 앞선 테스트는 취소(배포 job 은 아래에서 따로 직렬화)

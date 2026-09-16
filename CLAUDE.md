@@ -101,6 +101,8 @@ VM 한 대에 앱 + PostgreSQL + Redis 를 통째로 올리는 구성.
 - Secrets: `DEPLOY_HOST` `DEPLOY_USER` `DEPLOY_SSH_KEY` `DEPLOY_KNOWN_HOSTS`(ED25519 한 줄). GHCR 은 실행마다 발급되는 `GITHUB_TOKEN` — 영구 토큰 없음.
 - **롤백(수동)**: Actions 에서 이전 성공 커밋의 워크플로를 Re-run 하거나, 서버에서 `.env` 의 `TUK_IMAGE_TAG` 를 이전 SHA 로 바꾸고 `docker compose -f docker-compose.prod.yml up -d`(GHCR 로그인 필요).
 - 배포 순간 앱 재시작으로 **약 40초 502** — 무중단 배포는 미적용.
+- ⚠️ **Windows 에서 커밋하면 실행 권한이 기록되지 않는다**(`core.filemode=false`) — 새 셸 스크립트는 `git update-index --chmod=+x <파일>` 필수. 첫 CI 가 `./gradlew` exit 126 으로 실패했던 원인(Dockerfile 의 `chmod +x` 가 가리고 있었음).
+- 배포 키 문제 진단: deploy job 의 Prepare SSH 가 개인키 여부(`ssh-keygen -y`)를 검사하고 지문을 찍는다. 서버 쪽은 `journalctl _COMM=sshd | grep "for deploy"` 로 GitHub 러너 접속·지문 확인. 키 교체 = 새 키 생성 → 서버 `/home/deploy/.ssh/authorized_keys` 한 줄 교체 → Secret `DEPLOY_SSH_KEY` 갱신.
 - 서버 설정 파일(`.env`, `firebase-service-account.json`)은 리포에 없고 서버 `/opt/tuk-server` 에만 있다. 새 서버 구축 시 `.env.example` 참고해 수동 작성.
 
 구성: **Caddy(80/443) → app(8080) → postgres·redis**. 앱·DB·Redis 는 외부에 포트를 열지 않는다.
