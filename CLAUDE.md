@@ -115,6 +115,20 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 리포가 비공개라 서버에서 clone 하지 않고 로컬에서 `git archive HEAD | ssh root@158.247.230.36 'tar -x -C /opt/tuk-server'` 로 보낸다.
 외부 검증: health 200 / HTTP→HTTPS 308 / Swagger·actuator·dev로그인 401 / 타 오리진 CORS 403 / `/ws` 101 / 8080 외부 차단. 이미지 빌드 약 4분, 앱 기동 약 40초.
 
+### DB 백업 (2026-09-16~)
+- **매일 04:00 KST** systemd 타이머가 `pg_dump -Fc` → `/var/backups/tuk/tuk-YYYYMMDD-HHMM.dump`(600), **14일 보관**. 파일은 `ops/backup/` 에 있다(서버 재구축 시 `/usr/local/bin`·`/etc/systemd/system` 에 복사 후 `systemctl enable --now tuk-db-backup.timer`).
+- ⚠️ **서버 디스크에만 저장** — 실수로 지운 데이터는 살리지만 서버가 통째로 사라지면 백업도 사라진다. 실사용 전 외부 저장소(R2/B2 무료 구간)로 사본을 내보낼 것.
+- Redis 는 백업 안 함(refresh 토큰·콜 상태뿐 — 잃으면 재로그인).
+- 상태 확인: `systemctl list-timers tuk-db-backup.timer` · `journalctl -u tuk-db-backup.service`
+- 수동 실행: `systemctl start tuk-db-backup.service`
+- **복구**(검증됨 — 임시 DB 에 복원해 운영과 행 수·Flyway 버전 일치 확인):
+  ```bash
+  docker compose -f docker-compose.prod.yml stop app
+  docker exec tuk-postgres dropdb -U postgres tuk && docker exec tuk-postgres createdb -U postgres tuk
+  docker exec -i tuk-postgres pg_restore -U postgres -d tuk --no-owner < /var/backups/tuk/<파일>.dump
+  docker compose -f docker-compose.prod.yml start app
+  ```
+
 ### 스케일 단계에서 손볼 것 (지금은 MVP라 의도적으로 미적용)
 - 만료 스위퍼: 무제한 fetch + 단일 트랜잭션 → 페이징 처리
 - 스위퍼가 인스턴스마다 실행 → 다중 서버 시 분산 락(ShedLock)

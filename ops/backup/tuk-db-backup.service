@@ -1,0 +1,8 @@
+[Unit]
+Description=툭 PostgreSQL 백업
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tuk-db-backup

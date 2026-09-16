@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 툭 PostgreSQL 일일 백업 — tuk-db-backup.timer 가 매일 04:00 KST 에 실행.
+# 서버 디스크에만 저장한다(서버 자체가 사라지면 같이 사라짐 → 이후 외부 저장소로 확장 예정).
+set -euo pipefail
+
+DIR=/var/backups/tuk
+KEEP_DAYS=14
+TS=$(TZ=Asia/Seoul date +%Y%m%d-%H%M)
+OUT="$DIR/tuk-$TS.dump"
+
+# 커스텀 포맷(-Fc): 압축되고 pg_restore 로 테이블 단위 복구 가능.
+# 임시 파일에 쓰고 검증 후 이름을 바꿔, 실패한 백업이 정상 파일처럼 남지 않게 한다.
+docker exec tuk-postgres pg_dump -U postgres -d tuk -Fc > "$OUT.partial"
+docker exec -i tuk-postgres pg_restore --list < "$OUT.partial" > /dev/null
+mv "$OUT.partial" "$OUT"
+chmod 600 "$OUT"
+
+find "$DIR" -name "tuk-*.dump" -mtime +"$KEEP_DAYS" -delete
+find "$DIR" -name "*.partial" -mmin +60 -delete
+
+echo "백업 완료: $OUT ($(du -h "$OUT" | cut -f1)), 보관 $(ls "$DIR"/tuk-*.dump | wc -l)개"
