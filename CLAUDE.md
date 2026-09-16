@@ -121,6 +121,13 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 첫 배포는 수동(`git archive` 전송 + 서버 빌드)이었고, 2026-09-16 부터 위 CI/CD 로 전환.
 외부 검증: health 200 / HTTP→HTTPS 308 / Swagger·actuator·dev로그인 401 / 타 오리진 CORS 403 / `/ws` 101 / 8080 외부 차단. 이미지 빌드 약 4분, 앱 기동 약 40초.
 
+### 서버 SSH 강화 (2026-09-17~)
+- `ops/ssh/00-tuk-hardening.conf` → 서버 `/etc/ssh/sshd_config.d/`. **비밀번호 로그인 전면 금지**, root 는 키로만(`prohibit-password`), `MaxAuthTries 3`.
+- 적용 전 24시간 로그인 실패 **6,454회**(한 IP 3,248회) 관측 — 비밀번호 대입 공격이 상시 들어온다.
+- ⚠️ sshd 는 같은 옵션이 여러 번 나오면 **먼저 읽은 값**을 쓴다. Vultr 의 `50-cloud-init.conf` 가 `PasswordAuthentication yes` 라서 파일명을 `00-` 으로 시작해야 이긴다. 확인은 `sshd -T | grep passwordauthentication`.
+- 변경 시 안전장치: `systemd-run --on-active=10min` 으로 자동 원상복구 타이머를 먼저 걸고 → `sshd -t` → `systemctl reload ssh`(기존 세션 유지) → 새 접속으로 확인 후 타이머 취소.
+- 키를 잃어버리면 SSH 로는 못 들어간다 → **Vultr 웹 콘솔**(서버 화면에 직접 접속, sshd 설정과 무관)로 root 비밀번호 로그인해 복구.
+
 ### DB 백업 (2026-09-16~)
 - **매일 04:00 KST** systemd 타이머가 `pg_dump -Fc` → `/var/backups/tuk/tuk-YYYYMMDD-HHMM.dump`(600), **14일 보관**. 파일은 `ops/backup/` 에 있다(서버 재구축 시 `/usr/local/bin`·`/etc/systemd/system` 에 복사 후 `systemctl enable --now tuk-db-backup.timer`).
 - ⚠️ **서버 디스크에만 저장** — 실수로 지운 데이터는 살리지만 서버가 통째로 사라지면 백업도 사라진다. 실사용 전 외부 저장소(R2/B2 무료 구간)로 사본을 내보낼 것.
