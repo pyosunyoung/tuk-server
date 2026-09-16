@@ -92,12 +92,16 @@ https://app.notion.com/p/38b90d0318b7817097b4fe985d05fcd6
 ### 운영 기동 방법 (Docker)
 VM 한 대에 앱 + PostgreSQL + Redis 를 통째로 올리는 구성.
 
-```bash
-cp .env.example .env                 # 실제 값 채우기 (커밋 안 됨)
-# FCM 쓰면 firebase-service-account.json 을 이 디렉터리에 두고 .env 의 FCM_ENABLED=true
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f app
-```
+**배포 = `main` 에 push.** GitHub Actions(`.github/workflows/backend.yml`)가 한다:
+`test`(PG·Redis 서비스 컨테이너로 전체 테스트) → `image`(GHCR `ghcr.io/pyosunyoung/tuk-server:<커밋SHA>` push) → `deploy`(SSH → 서버의 `ops/deploy/tuk-deploy`) → 공개 URL health 스모크 테스트.
+- **서버에서 빌드하지 않는다** — 2GB VM 에서 Gradle 빌드가 돌아가는 앱과 메모리를 다툰다.
+- 서버 `deploy` 사용자 + 전용 키. authorized_keys 가 `restrict,command="/usr/local/bin/tuk-deploy"` 라 그 키로는 배포 스크립트만 실행된다(셸·scp·포워딩 불가 — 실검증).
+  스크립트: 인자 검증(`deploy <sha> <actor>`) → stdin 1행 GHCR 임시토큰 + tar(compose·Caddyfile) → pull → `up -d` → health 대기(180초) → **실패 시 직전 태그로 자동 롤백**. 성공 태그는 `/opt/tuk-server/.deploy-tag`, 현재 태그는 `.env` 의 `TUK_IMAGE_TAG`(스크립트가 관리).
+  스크립트를 고치면 서버 `/usr/local/bin/tuk-deploy` 에도 root 로 복사해야 반영된다(자기 자신을 배포하지 않음).
+- Secrets: `DEPLOY_HOST` `DEPLOY_USER` `DEPLOY_SSH_KEY` `DEPLOY_KNOWN_HOSTS`(ED25519 한 줄). GHCR 은 실행마다 발급되는 `GITHUB_TOKEN` — 영구 토큰 없음.
+- **롤백(수동)**: Actions 에서 이전 성공 커밋의 워크플로를 Re-run 하거나, 서버에서 `.env` 의 `TUK_IMAGE_TAG` 를 이전 SHA 로 바꾸고 `docker compose -f docker-compose.prod.yml up -d`(GHCR 로그인 필요).
+- 배포 순간 앱 재시작으로 **약 40초 502** — 무중단 배포는 미적용.
+- 서버 설정 파일(`.env`, `firebase-service-account.json`)은 리포에 없고 서버 `/opt/tuk-server` 에만 있다. 새 서버 구축 시 `.env.example` 참고해 수동 작성.
 
 구성: **Caddy(80/443) → app(8080) → postgres·redis**. 앱·DB·Redis 는 외부에 포트를 열지 않는다.
 Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신한다
@@ -112,7 +116,7 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 
 운영 프로필 검증 완료: 헬스 200 / Swagger·dev로그인·다른 actuator 401 / 허용 오리진만 CORS 통과.
 **배포 완료(2026-09-15)**: Vultr 서울 `158.247.230.36`, 코드 위치 `/opt/tuk-server`, 도메인 `tuk.158-247-230-36.sslip.io`(임시 — 진짜 도메인 사면 `.env` 의 `TUK_DOMAIN`·`CORS_ALLOWED_ORIGINS` 만 교체).
-리포가 비공개라 서버에서 clone 하지 않고 로컬에서 `git archive HEAD | ssh root@158.247.230.36 'tar -x -C /opt/tuk-server'` 로 보낸다.
+첫 배포는 수동(`git archive` 전송 + 서버 빌드)이었고, 2026-09-16 부터 위 CI/CD 로 전환.
 외부 검증: health 200 / HTTP→HTTPS 308 / Swagger·actuator·dev로그인 401 / 타 오리진 CORS 403 / `/ws` 101 / 8080 외부 차단. 이미지 빌드 약 4분, 앱 기동 약 40초.
 
 ### DB 백업 (2026-09-16~)

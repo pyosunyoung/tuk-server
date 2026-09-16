@@ -1,14 +1,18 @@
 # 운영용 스택 (앱 + PostgreSQL + Redis). VM 한 대에 통째로 올리는 구성.
 #
-#   cp .env.example .env      # 실제 값 채우기 (이 파일은 커밋되지 않는다)
-#   docker compose -f docker-compose.prod.yml up -d --build
+# 배포는 GitHub Actions 가 한다(.github/workflows/backend.yml):
+#   main push → 테스트 → 이미지 빌드·GHCR push → 서버의 ops/deploy/tuk-deploy 가 이 파일로 교체.
+# 서버에서 빌드하지 않는다(2GB VM 에서 Gradle 빌드가 돌아가는 앱과 메모리를 다툼).
+#
+# 현재 배포된 태그는 배포 스크립트가 .env 의 TUK_IMAGE_TAG 에 기록한다 → 서버에서 평소 명령은 그대로:
 #   docker compose -f docker-compose.prod.yml logs -f app
 #
 # 로컬 개발은 docker-compose.yml(인프라만) 을 쓴다 — 이 파일과 섞지 말 것.
 
 services:
   app:
-    build: .
+    # 태그 = 커밋 SHA. 롤백은 이전 SHA 로 다시 띄우면 된다.
+    image: "ghcr.io/pyosunyoung/tuk-server:${TUK_IMAGE_TAG:?배포할 이미지 태그(커밋 SHA)가 필요합니다}"
     container_name: tuk-app
     restart: unless-stopped
     depends_on:

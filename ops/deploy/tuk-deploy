@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# 툭 배포 스크립트 — GitHub Actions 전용 SSH 키의 forced command.
+#
+# deploy 사용자의 authorized_keys 에 이 스크립트가 command= 로 묶여 있어서,
+# 그 키로 접속하면 무슨 명령을 보내든 이 스크립트만 실행된다(셸·scp·포워딩 불가).
+#
+# 호출:  ssh deploy@서버 "deploy <커밋SHA> <github사용자>"  < 입력
+# 입력(stdin):  1행 = GHCR 임시 토큰(GITHUB_TOKEN)
+#              2행~ = docker-compose.prod.yml, Caddyfile 을 담은 tar
+#
+# 동작: 이미지 pull → 앱 교체 → health 대기 → 실패하면 직전 버전으로 자동 롤백.
+set -euo pipefail
+
+APP_DIR=/opt/tuk-server
+COMPOSE=(docker compose -f "$APP_DIR/docker-compose.prod.yml")
+TAG_FILE="$APP_DIR/.deploy-tag"
+HEALTH_TIMEOUT=180
+
+log() { echo "[tuk-deploy] $*"; }
+
+# --- 1) 인자 검증: 허용된 형태 외엔 전부 거부 -------------------------------
+read -r cmd tag actor extra <<<"${SSH_ORIGINAL_COMMAND:-}"
+if [[ "${cmd:-}" != "deploy" || -n "${extra:-}" \
+      || ! "${tag:-}" =~ ^[0-9a-f]{7,40}$ \
+      || ! "${actor:-}" =~ ^[A-Za-z0-9-]{1,39}$ ]]; then
+  echo "사용법: deploy <commit-sha> <github-user>" >&2
+  exit 2
+fi
+
+# 동시에 두 배포가 돌지 않게
+exec 9>"$APP_DIR/.deploy.lock"
+flock -n 9 || { echo "다른 배포가 진행 중입니다" >&2; exit 3; }
+
+# --- 2) stdin: 토큰 1행 + 설정 파일 tar -----------------------------------
+IFS= read -r token
+tmp=$(mktemp -d)
+cleanup() { rm -rf "$tmp"; docker logout ghcr.io >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+# 목록에 있는 두 파일만 꺼낸다(다른 경로가 섞여 있어도 무시)
+tar -x -f - -C "$tmp" -- docker-compose.prod.yml Caddyfile
+install -m 644 "$tmp/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
+# Caddyfile 은 파일 단위 bind mount 라 새 파일로 바꿔치면(inode 변경) 컨테이너가 옛 내용을 계속 본다
+# → 같은 파일에 내용만 덮어쓴다
+caddy_changed=false
+if ! cmp -s "$tmp/Caddyfile" "$APP_DIR/Caddyfile"; then
+  cat "$tmp/Caddyfile" > "$APP_DIR/Caddyfile"
+  caddy_changed=true
+fi
+
+printf '%s' "$token" | docker login ghcr.io -u "$actor" --password-stdin >/dev/null
+log "로그인 완료, 이미지 ghcr.io/pyosunyoung/tuk-server:$tag"
+
+# --- 3) 교체 + health 대기 -------------------------------------------------
+wait_healthy() {
+  local waited=0 status
+  while (( waited < HEALTH_TIMEOUT )); do
+    status=$(docker inspect -f '{{.State.Health.Status}}' tuk-app 2>/dev/null || echo missing)
+    [[ "$status" == healthy ]] && return 0
+    sleep 5; waited=$((waited + 5))
+  done
+  log "health 대기 시간 초과 (마지막 상태: $status)"
+  return 1
+}
+
+up() {
+  # 현재 태그를 .env 에 기록 → 서버에서 그냥 `docker compose ... logs` 해도 태그 없이 동작
+  if grep -q '^TUK_IMAGE_TAG=' "$APP_DIR/.env"; then
+    sed -i "s/^TUK_IMAGE_TAG=.*/TUK_IMAGE_TAG=$1/" "$APP_DIR/.env"
+  else
+    printf '\n# 배포 스크립트가 관리한다(직접 수정 X)\nTUK_IMAGE_TAG=%s\n' "$1" >> "$APP_DIR/.env"
+  fi
+  "${COMPOSE[@]}" pull app
+  "${COMPOSE[@]}" up -d --no-build --remove-orphans
+}
+
+prev=$(cat "$TAG_FILE" 2>/dev/null || true)
+log "이전 버전: ${prev:-없음} → 새 버전: $tag"
+
+up "$tag"
+if wait_healthy; then
+  echo "$tag" > "$TAG_FILE"
+  if $caddy_changed; then
+    docker exec tuk-caddy caddy reload --config /etc/caddy/Caddyfile && log "Caddyfile 다시 읽음"
+  fi
+  docker image prune -af --filter "until=336h" >/dev/null 2>&1 || true
+  log "배포 성공: $tag"
+  exit 0
+fi
+
+docker logs --tail 40 tuk-app >&2 || true
+if [[ -n "$prev" && "$prev" != "$tag" ]]; then
+  log "롤백: $prev 로 되돌립니다"
+  up "$prev"
+  wait_healthy && log "롤백 완료: $prev" || log "롤백 후에도 unhealthy — 수동 확인 필요"
+fi
+exit 1

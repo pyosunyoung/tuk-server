@@ -1,0 +1,167 @@
+# 툭 백엔드 CI/CD
+#
+#   PR / push     → test
+#   main push     → test → image(GHCR) → deploy(Vultr)
+#
+# 서버 쪽 절반은 ops/deploy/tuk-deploy (deploy 사용자의 forced command).
+# 필요한 Secrets: DEPLOY_HOST · DEPLOY_USER · DEPLOY_SSH_KEY · DEPLOY_KNOWN_HOSTS
+# GHCR 은 실행마다 발급되는 GITHUB_TOKEN 을 쓴다(영구 토큰 없음).
+name: backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 같은 브랜치에 연달아 push 하면 앞선 테스트는 취소(배포 job 은 아래에서 따로 직렬화)
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/pyosunyoung/tuk-server
+  PUBLIC_URL: https://tuk.158-247-230-36.sslip.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # 테스트는 application.yml 의 로컬 기본값(localhost PG/Redis)으로 돈다 → 같은 값으로 띄운다
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "1234"
+          POSTGRES_DB: tuk
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tuk"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      TZ: Asia/Seoul   # 번개 만료가 서버 벽시계(LocalDateTime) 기준 — 운영과 같은 시간대로
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test
+        run: ./gradlew test --no-daemon
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
+
+  image:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # org.opencontainers.image.source 라벨 → GHCR 패키지가 이 리포에 연결된다
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=raw,value=${{ github.sha }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 배포는 한 번에 하나씩, 진행 중인 배포는 절대 취소하지 않는다
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://tuk.158-247-230-36.sslip.io
+    permissions:
+      contents: read
+      packages: read   # 서버가 이 토큰으로 GHCR 에서 pull 한다
+    steps:
+      # 서버로 보낼 compose·Caddyfile 을 이 커밋 기준으로
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # 키 형식이 깨졌으면 여기서 바로 알 수 있게
+          ssh-keygen -l -f ~/.ssh/deploy_key > /dev/null
+
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # stdin: 1행 = GHCR 토큰, 이후 = 설정 파일 tar (tuk-deploy 가 이 순서로 읽는다)
+          { printf '%s\n' "$GHCR_TOKEN"; tar -c -f - docker-compose.prod.yml Caddyfile; } \
+            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                "$DEPLOY_USER@$HOST" "deploy $GITHUB_SHA $GITHUB_ACTOR"
+
+      - name: Smoke test (public HTTPS)
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS --max-time 5 "$PUBLIC_URL/actuator/health" | grep -q '"status":"UP"'; then
+              echo "health UP"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::배포 후 $PUBLIC_URL/actuator/health 가 UP 이 아닙니다"
+          exit 1
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
