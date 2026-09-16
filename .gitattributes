@@ -1,3 +1,6 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+
+# 서버(리눅스)에 그대로 복사하는 운영 스크립트 — CRLF 면 bash 가 실행에 실패한다
+ops/** text eol=lf
