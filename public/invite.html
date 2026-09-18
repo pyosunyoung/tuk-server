@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>툭 초대</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { --ground:#FBF7F1; --surface:#fff; --ink:#2A2320; --muted:#7A6E66; --line:#E6DCD1; --coral:#FF7A5C; --coral-ink:#D9502F; --tint:#FFEDE7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px; word-break:keep-all; }
+  main { width:100%; max-width:380px; display:flex; flex-direction:column; gap:22px; }
+  .logo { width:64px; height:64px; border-radius:18px; background:var(--coral); color:#fff; display:grid; place-items:center; font-size:30px; font-weight:700; }
+  h1 { margin:0; font-size:26px; line-height:1.35; }
+  p { margin:0; color:var(--muted); line-height:1.6; }
+  .code { background:var(--tint); border:1px solid #FFD2C4; border-radius:16px; padding:22px 16px; text-align:center;
+    font-family:ui-monospace,"Cascadia Code",Consolas,monospace; font-size:32px; font-weight:700; letter-spacing:6px; color:var(--coral-ink); }
+  button { font:inherit; font-weight:600; font-size:16px; border:0; border-radius:999px; padding:15px; background:var(--coral); color:#fff; cursor:pointer; }
+  button:focus-visible { outline:3px solid var(--coral-ink); outline-offset:2px; }
+  ol { margin:0; padding-left:1.2em; color:var(--ink); line-height:1.8; }
+  .note { font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo" aria-hidden="true">툭</div>
+  <h1>툭에 초대받았어요</h1>
+  <p>한가할 때 절친에게 한 탭으로 "지금 볼래?"를 던지는 앱이에요. 거절은 아무에게도 안 보여요.</p>
+  <div class="code" id="code">········</div>
+  <button type="button" id="copy">초대 코드 복사</button>
+  <ol>
+    <li>툭 앱을 설치해요</li>
+    <li>카카오로 시작해요</li>
+    <li>친구 추가 → <b>코드 입력</b>에 위 코드를 넣어요</li>
+  </ol>
+  <p class="note">툭 앱이 이미 있다면 카카오톡의 초대 카드에서 "툭에서 친구 되기"를 누르면 코드가 자동으로 채워져요.</p>
+</main>
+<script>
+  // 코드는 URL 에서 읽어 글자로만 넣는다(HTML 로 해석하지 않음). 형식이 아니면 표시하지 않는다.
+  var code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+  var valid = /^[A-Z0-9]{4,16}$/.test(code);
+  var el = document.getElementById('code');
+  var btn = document.getElementById('copy');
+  if (valid) { el.textContent = code; } else { el.textContent = '코드 없음'; btn.hidden = true; }
+  btn.addEventListener('click', function () {
+    var done = function () { btn.textContent = '복사했어요'; setTimeout(function () { btn.textContent = '초대 코드 복사'; }, 1500); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(code).then(done, function () {}); }
+  });
+</script>
+</body>
+</html>

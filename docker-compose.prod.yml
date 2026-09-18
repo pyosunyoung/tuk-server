@@ -60,6 +60,8 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 카카오톡 공유 카드 이미지·안내 페이지. 폴더째 연결 → 배포 스크립트가 안의 파일만 갈아끼운다
+      - ./public:/srv/public:ro
       - caddy-data:/data        # 발급받은 인증서 — 지우면 재발급(Let's Encrypt 한도 주의)
       - caddy-config:/config
       - caddy-logs:/var/log/caddy

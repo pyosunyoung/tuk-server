@@ -138,6 +138,12 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 - 로컬에서 한글로 테스트할 땐 Git Bash `curl` 금지(CP949 로 넘어가 서버가 거부) — Python `urllib` 로.
 - 알려진 사소한 점: 인코딩이 깨진 요청은 `/error` 가 인증 필요라 400 대신 401 로 응답한다.
 
+### 카카오톡 공유 카드용 정적 파일 (2026-09-18~)
+- 리포 `public/` → 배포 시 서버 `/opt/tuk-server/public` → Caddy 컨테이너 `/srv/public`(폴더 연결).
+  `/share/tuk-card.png`(카드 이미지 800×400), `/invite?code=`(앱 없는 친구용 초대 안내), `/app`(앱 없는 사람용 모임방 안내). 나머지 경로는 전부 앱으로 reverse_proxy.
+- 배포 스크립트가 `public/` 을 `rsync --delete` 로 **폴더 안만** 맞춘다(폴더를 바꿔치면 폴더 연결이 옛 폴더를 봄 — Caddyfile 단일 파일과 같은 함정).
+- 카드 링크가 동작하려면 카카오 콘솔(**툭 앱**)의 사이트 도메인에 이 도메인과 `https://place.map.kakao.com` 이 등록돼 있어야 한다.
+
 ### DB 백업 (2026-09-16~)
 - **매일 04:00 KST** systemd 타이머가 `pg_dump -Fc` → `/var/backups/tuk/tuk-YYYYMMDD-HHMM.dump`(600), **14일 보관**. 파일은 `ops/backup/` 에 있다(서버 재구축 시 `/usr/local/bin`·`/etc/systemd/system` 에 복사 후 `systemctl enable --now tuk-db-backup.timer`).
 - ⚠️ **서버 디스크에만 저장** — 실수로 지운 데이터는 살리지만 서버가 통째로 사라지면 백업도 사라진다. 실사용 전 외부 저장소(R2/B2 무료 구간)로 사본을 내보낼 것.

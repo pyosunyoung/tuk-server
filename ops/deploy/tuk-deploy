@@ -6,7 +6,7 @@
 #
 # 호출:  ssh deploy@서버 "deploy <커밋SHA> <github사용자>"  < 입력
 # 입력(stdin):  1행 = GHCR 임시 토큰(GITHUB_TOKEN)
-#              2행~ = docker-compose.prod.yml, Caddyfile 을 담은 tar
+#              2행~ = docker-compose.prod.yml, Caddyfile, public/(공유 카드 이미지·안내 페이지) 을 담은 tar
 #
 # 동작: 이미지 pull → 앱 교체 → health 대기 → 실패하면 직전 버전으로 자동 롤백.
 set -euo pipefail
@@ -37,8 +37,12 @@ tmp=$(mktemp -d)
 cleanup() { rm -rf "$tmp"; docker logout ghcr.io >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-# 목록에 있는 두 파일만 꺼낸다(다른 경로가 섞여 있어도 무시)
-tar -x -f - -C "$tmp" -- docker-compose.prod.yml Caddyfile
+# 목록에 있는 것만 꺼낸다(다른 경로가 섞여 있어도 무시, GNU tar 는 ".." 가 든 경로를 거부)
+tar -x -f - -C "$tmp" -- docker-compose.prod.yml Caddyfile public
+# public/ 은 Caddy 에 '폴더째' 연결돼 있다 → 폴더를 바꿔치지 말고 안의 파일만 맞춘다(rsync --delete).
+# 폴더를 새로 만들어 이름을 바꾸면 컨테이너는 옛 폴더를 계속 본다(Caddyfile 단일 파일 연결과 같은 함정).
+mkdir -p "$APP_DIR/public"
+rsync -a --delete --no-owner --no-group "$tmp/public/" "$APP_DIR/public/"
 install -m 644 "$tmp/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
 # Caddyfile 은 파일 단위 bind mount 라 새 파일로 바꿔치면(inode 변경) 컨테이너가 옛 내용을 계속 본다
 # → 같은 파일에 내용만 덮어쓴다

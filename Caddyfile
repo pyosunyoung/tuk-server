@@ -8,10 +8,32 @@
 	# 응답 압축 (모바일 데이터 절약)
 	encode gzip
 
-	# 뒤의 앱으로 전달. WebSocket(STOMP) 업그레이드도 그대로 통과한다.
-	reverse_proxy app:8080 {
-		# 앱이 원래 요청자 IP·프로토콜을 알 수 있게(로그·보안용)
-		header_up X-Real-IP {remote_host}
+	# 카카오톡 공유 카드용 정적 파일 (리포 public/ → 서버 /opt/tuk-server/public → 컨테이너 /srv/public)
+	#   /share/*  카드 이미지 — 카카오가 카드를 만들 때 가져간다
+	#   /invite   앱이 없는 친구가 초대 카드를 눌렀을 때 (코드 표시 + 설치 안내)
+	#   /app      앱이 없는 사람이 모임방 카드를 눌렀을 때
+	handle /share/* {
+		root * /srv/public
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+	handle /invite {
+		root * /srv/public
+		rewrite * /invite.html
+		file_server
+	}
+	handle /app {
+		root * /srv/public
+		rewrite * /app.html
+		file_server
+	}
+
+	# 나머지는 전부 뒤의 앱으로. WebSocket(STOMP) 업그레이드도 그대로 통과한다.
+	handle {
+		reverse_proxy app:8080 {
+			# 앱이 원래 요청자 IP·프로토콜을 알 수 있게(로그·보안용)
+			header_up X-Real-IP {remote_host}
+		}
 	}
 
 	log {

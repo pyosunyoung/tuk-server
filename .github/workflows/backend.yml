@@ -154,8 +154,8 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # stdin: 1행 = GHCR 토큰, 이후 = 설정 파일 tar (tuk-deploy 가 이 순서로 읽는다)
-          { printf '%s\n' "$GHCR_TOKEN"; tar -c -f - docker-compose.prod.yml Caddyfile; } \
+          # stdin: 1행 = GHCR 토큰, 이후 = 설정 파일·정적 파일(public/) tar (tuk-deploy 가 이 순서로 읽는다)
+          { printf '%s\n' "$GHCR_TOKEN"; tar -c -f - docker-compose.prod.yml Caddyfile public; } \
             | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
                 "$DEPLOY_USER@$HOST" "deploy $GITHUB_SHA $GITHUB_ACTOR"
 
