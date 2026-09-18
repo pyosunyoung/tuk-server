@@ -173,7 +173,7 @@ class FlashServiceTest {
         given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
         given(userRepository.getReferenceById(1L)).willReturn(sender);
 
-        MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대 A카페", 37.5, 127.0));
+        MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대 A카페", 37.5, 127.0, null, null));
 
         assertThat(res.placeName()).isEqualTo("홍대 A카페");
         assertThat(res.placeSetById()).isEqualTo(1L);
@@ -192,10 +192,47 @@ class FlashServiceTest {
         given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of(joined));
         given(userRepository.getReferenceById(2L)).willReturn(joiner);
 
-        MeetupRoomResponse res = flashService.setPlace(2L, 10L, new SetPlaceRequest("학관 앞", null, null));
+        MeetupRoomResponse res = flashService.setPlace(2L, 10L, new SetPlaceRequest("학관 앞"));
 
         assertThat(res.placeSetById()).isEqualTo(2L);
         assertThat(res.placeSetByNickname()).isEqualTo("합류자");
+    }
+
+    @Test
+    @DisplayName("setPlace: 검색으로 고른 장소는 카카오 장소 ID·주소·좌표까지 저장해 응답한다")
+    void setSearchedPlace() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest(
+                "스타벅스 강남역신분당역사점", 37.4979, 127.0276, "1234567", "서울 강남구 강남대로 396"));
+
+        assertThat(res.placeKakaoId()).isEqualTo("1234567");
+        assertThat(res.placeAddress()).isEqualTo("서울 강남구 강남대로 396");
+        assertThat(res.placeLat()).isEqualTo(37.4979);
+    }
+
+    @Test
+    @DisplayName("setPlace: 검색 장소 → 직접 입력으로 바꾸면 이전 가게의 ID·주소·좌표가 지워진다")
+    void manualPlaceClearsSearchedDetails() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        room.setPlace("스타벅스 강남", 37.4979, 127.0276, "1234567", "서울 강남구 강남대로 396", sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        MeetupRoomResponse res = flashService.setPlace(1L, 10L, new SetPlaceRequest("  학교 정문  "));
+
+        assertThat(res.placeName()).isEqualTo("학교 정문");
+        assertThat(res.placeKakaoId()).isNull();
+        assertThat(res.placeAddress()).isNull();
+        assertThat(res.placeLat()).isNull();
+        assertThat(res.placeLng()).isNull();
     }
 
     @Test

@@ -210,7 +210,8 @@ public class FlashService {
         MeetupRoom room = requireRoom(flashId);
         checkMember(userId, room.getFlash());
         // 프록시라 select 없이 FK 만 채운다. 응답에 쓸 닉네임은 members 에서 찾는다.
-        room.setPlace(request.placeName(), request.placeLat(), request.placeLng(),
+        room.setPlace(request.placeName().strip(), request.placeLat(), request.placeLng(),
+                request.kakaoPlaceId(), request.placeAddress(),
                 userRepository.getReferenceById(userId));
         return buildRoomResponse(room);
     }
@@ -260,6 +261,8 @@ public class FlashService {
                 room.getPlaceName(),
                 room.getPlaceLat(),
                 room.getPlaceLng(),
+                room.getPlaceKakaoId(),
+                room.getPlaceAddress(),
                 placeSetById,
                 placeSetByNickname,
                 room.getStatus().name(),

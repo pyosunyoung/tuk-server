@@ -13,7 +13,8 @@ import java.time.LocalDateTime;
 /**
  * 모임방 (Flash 와 1:1).
  * 멤버 = 보낸 사람 + status=JOINED 인 FlashRecipient (별도 멤버 테이블 없음).
- * 장소는 MVP 에선 멤버가 place_name 을 수정. 후보 투표(PlaceCandidate)는 v1.1.
+ * 장소는 멤버 누구나 정한다. 검색으로 고르면 카카오 장소 ID·주소·좌표까지, 직접 입력하면 이름만.
+ * 후보 투표(PlaceCandidate)는 v1.1.
  */
 @Entity
 @Table(name = "meetup_rooms")
@@ -32,6 +33,13 @@ public class MeetupRoom extends BaseTimeEntity {
     private String placeName;
     private Double placeLat;
     private Double placeLng;
+
+    /** 검색으로 고른 장소의 카카오 장소 ID. 직접 입력한 장소면 null. */
+    @Column(length = 30)
+    private String placeKakaoId;
+
+    /** 검색으로 고른 장소의 주소(도로명 우선). 직접 입력한 장소면 null. */
+    private String placeAddress;
 
     /**
      * 장소를 정한 멤버. 아직 아무도 안 정했으면 null.
@@ -55,10 +63,17 @@ public class MeetupRoom extends BaseTimeEntity {
         this.expiresAt = expiresAt;
     }
 
-    public void setPlace(String placeName, Double placeLat, Double placeLng, User setter) {
+    /**
+     * 장소를 통째로 교체한다. 검색 장소 → 직접 입력으로 바꾸면 ID·주소·좌표가 null 로 지워져야
+     * 지도 링크가 이전 가게를 열지 않는다(부분 수정 X).
+     */
+    public void setPlace(String placeName, Double placeLat, Double placeLng,
+                         String placeKakaoId, String placeAddress, User setter) {
         this.placeName = placeName;
         this.placeLat = placeLat;
         this.placeLng = placeLng;
+        this.placeKakaoId = placeKakaoId;
+        this.placeAddress = placeAddress;
         this.placeSetBy = setter;
     }
 

@@ -30,6 +30,8 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET:?JWT 시크릿(32바이트 이상)을 .env 에 넣어주세요}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # 장소 검색(카카오 로컬 API). 없으면 검색만 꺼지고 직접 입력은 동작
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
       # FCM: 키 파일은 이미지에 굽지 않고 아래 볼륨으로 넣는다
       FCM_ENABLED: ${FCM_ENABLED:-false}
       FCM_CREDENTIALS_PATH: /run/secrets/firebase-service-account.json

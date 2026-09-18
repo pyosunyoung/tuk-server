@@ -55,6 +55,7 @@ User, Friendship(자기참조 N:N, status), Flash(+scheduled_at), FlashRecipient
 - Presence: `POST/DELETE /api/presence` · `GET /me` · `GET /friends`(지금 한가한 친구)
 - 번개: `POST /api/flashes` · `GET /received` · `POST /{id}/join` · `GET /{id}/room` · `PATCH /{id}/room/place`
 - 기기토큰: `POST/DELETE /api/device-tokens`
+- 장소 검색: `GET /api/places/search?query=` (카카오 로컬 API 프록시 — REST 키는 서버에만)
 - WebSocket: `/ws` 핸드셰이크(permitAll) → STOMP CONNECT 헤더 JWT 인증. 구독 `/user/queue/presence`, `/user/queue/flash`
 
 ## 실시간 알림 라우팅
@@ -127,6 +128,15 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 - ⚠️ sshd 는 같은 옵션이 여러 번 나오면 **먼저 읽은 값**을 쓴다. Vultr 의 `50-cloud-init.conf` 가 `PasswordAuthentication yes` 라서 파일명을 `00-` 으로 시작해야 이긴다. 확인은 `sshd -T | grep passwordauthentication`.
 - 변경 시 안전장치: `systemd-run --on-active=10min` 으로 자동 원상복구 타이머를 먼저 걸고 → `sshd -t` → `systemctl reload ssh`(기존 세션 유지) → 새 접속으로 확인 후 타이머 취소.
 - 키를 잃어버리면 SSH 로는 못 들어간다 → **Vultr 웹 콘솔**(서버 화면에 직접 접속, sshd 설정과 무관)로 root 비밀번호 로그인해 복구.
+
+### 장소 검색 · 카카오 REST API 키 (2026-09-18~)
+- `PATCH /room/place` 가 `kakaoPlaceId`·`placeAddress` 를 선택으로 받는다(Flyway **V2**, CI/CD 로 나간 첫 스키마 변경). 장소는 **통째로 교체** — 직접 입력으로 바꾸면 이전 가게의 ID·주소·좌표가 null 로 지워진다.
+- ⚠️ **키는 '툭' 앱이 아니라 '공유캘린더' 앱의 REST API 키(`tuk-server`)** 다. 카카오맵(로컬) API 무료 쿼터는 계정당 첫 앱에만 주어지는데 그게 공유캘린더라, 툭 앱에서 켜려면 유료(월렛 연결)였다. 로그인(툭 네이티브 키)과는 무관.
+  → **공유캘린더 앱을 삭제하거나 그 앱의 카카오맵 사용 설정을 끄면 장소 검색이 멈춘다**(앱은 '그대로 쓰기'로 대체되어 고장나진 않음).
+- 키 위치: 로컬 `application-local.yml` 의 `kakao.rest-api-key`, 운영 `/opt/tuk-server/.env` 의 `KAKAO_REST_API_KEY`. 비어 있으면 검색만 502.
+- 카카오가 401/403 을 주면 `KakaoLocalClient` 가 경고 로그를 남긴다. 403 `disabled OPEN_MAP_AND_LOCAL service` = 콘솔에서 그 앱의 카카오맵 사용 설정이 꺼짐.
+- 로컬에서 한글로 테스트할 땐 Git Bash `curl` 금지(CP949 로 넘어가 서버가 거부) — Python `urllib` 로.
+- 알려진 사소한 점: 인코딩이 깨진 요청은 `/error` 가 인증 필요라 400 대신 401 로 응답한다.
 
 ### DB 백업 (2026-09-16~)
 - **매일 04:00 KST** systemd 타이머가 `pg_dump -Fc` → `/var/backups/tuk/tuk-YYYYMMDD-HHMM.dump`(600), **14일 보관**. 파일은 `ops/backup/` 에 있다(서버 재구축 시 `/usr/local/bin`·`/etc/systemd/system` 에 복사 후 `systemctl enable --now tuk-db-backup.timer`).

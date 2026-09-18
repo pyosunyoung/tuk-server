@@ -55,6 +55,10 @@ fcm:
 # 카카오 사용자 정보 API base URL. 앱이 넘긴 access token 을 여기에 검증한다(백엔드는 별도 키 불필요).
 kakao:
   api-base-url: ${KAKAO_API_BASE_URL:https://kapi.kakao.com}
+  # 장소 검색(카카오 로컬 API). REST API 키는 비밀값 — 로컬은 application-local.yml, 운영은 .env 의 KAKAO_REST_API_KEY.
+  # 비어 있으면 장소 검색만 502 로 막히고 앱은 직접 입력으로 대체한다(서버 기동에는 영향 없음).
+  local-base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
+  rest-api-key: ${KAKAO_REST_API_KEY:}
 
 # 자체 JWT 설정. secret 은 배포 시 반드시 환경변수(JWT_SECRET)로 주입 — HS256 이라 최소 32바이트.
 jwt:
