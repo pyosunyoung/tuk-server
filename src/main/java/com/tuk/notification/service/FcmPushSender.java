@@ -3,6 +3,8 @@ package com.tuk.notification.service;
 import com.tuk.notification.dto.PushMessage;
 import com.google.firebase.messaging.AndroidConfig;
 import com.google.firebase.messaging.AndroidNotification;
+import com.google.firebase.messaging.ApnsConfig;
+import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -55,6 +57,15 @@ public class FcmPushSender implements PushSender {
                                 .setPriority(AndroidNotification.Priority.HIGH)
                                 .setDefaultSound(true)
                                 .setDefaultVibrateTimings(true)
+                                .build())
+                        .build())
+                // iOS 도 같은 이유로 전용 설정이 필요하다. 없으면 무음으로 오고,
+                // apns-priority 기본값(5)은 배터리를 아끼려 묶어 보내서 도착이 늦어진다.
+                // 제목·본문은 위 Notification 에서 그대로 내려온다(Aps 에는 소리만 지정).
+                .setApnsConfig(ApnsConfig.builder()
+                        .putHeader("apns-priority", "10")
+                        .setAps(Aps.builder()
+                                .setSound("default")
                                 .build())
                         .build())
                 .putAllData(message.data())
