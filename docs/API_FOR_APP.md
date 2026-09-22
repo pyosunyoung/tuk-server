@@ -114,8 +114,10 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 {
   "roomId": 20, "flashId": 85, "activity": "MEAL",
   "placeName": null, "placeLat": null, "placeLng": null,
+  "placeKakaoId": null, "placeAddress": null,
   "placeSetById": null, "placeSetByNickname": null,
   "status": "OPEN",
+  "expiresAt": "2026-09-22T21:30:00",
   "members": [
     { "userId": 340, "nickname": "...", "profileImage": null, "sender": true },
     { "userId": 341, "nickname": "...", "profileImage": null, "sender": false }
@@ -126,6 +128,8 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 - `placeSetById`/`placeSetByNickname` = **장소를 정한 멤버**. 아무도 안 정했으면 둘 다 null.
   장소는 멤버 누구나 다시 정할 수 있고, **마지막으로 바꾼 사람**으로 덮인다.
   (`placeSetById == 내 userId` 면 "내가 정했어요")
+- `placeKakaoId`/`placeAddress` = **검색으로 고른 장소**일 때만 값이 있다(직접 입력이면 둘 다 null).
+- `expiresAt` = 번개 만료 시각. 목록을 거치지 않고 **공유 링크로 방에 바로 들어오는 경로**가 있어서 방 응답에도 담는다.
 - 합류 권한: 초대받은(수신 레코드 있는) 사람만. 아니면 403.
 - **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`) push(§2).
 

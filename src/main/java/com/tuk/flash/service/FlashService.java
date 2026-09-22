@@ -266,6 +266,7 @@ public class FlashService {
                 placeSetById,
                 placeSetByNickname,
                 room.getStatus().name(),
+                room.getExpiresAt(),
                 members);
     }
 }

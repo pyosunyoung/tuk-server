@@ -248,6 +248,19 @@ class FlashServiceTest {
         assertThat(res.placeSetByNickname()).isNull();
     }
 
+    @Test
+    @DisplayName("getRoom: 공유 링크로 바로 들어와도 만료 시각을 알 수 있게 방 응답에 담는다")
+    void roomCarriesExpiresAt() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        MeetupRoom room = room(20L, flash);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+
+        MeetupRoomResponse res = flashService.getRoom(1L, 10L);
+
+        assertThat(res.expiresAt()).isEqualTo(room.getExpiresAt());
+    }
+
     // --- 내가 띄운 번개 (GET /sent) ---
 
     @Test
