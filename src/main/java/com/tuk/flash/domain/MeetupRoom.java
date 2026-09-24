@@ -49,6 +49,17 @@ public class MeetupRoom extends BaseTimeEntity {
     @JoinColumn(name = "place_set_by")
     private User placeSetBy;
 
+    /**
+     * 만나기로 한 시각. 아직 안 정했으면 null.
+     * expiresAt(모집 마감)과는 다른 시각이다 — 약속을 정한다고 만료를 늘리지 않는다.
+     */
+    private LocalDateTime meetAt;
+
+    /** 약속 시간을 정한 멤버. 장소와 같이 아무나 다시 정할 수 있고, 마지막 사람으로 덮인다. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "meet_at_set_by")
+    private User meetAtSetBy;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RoomStatus status;
@@ -75,6 +86,12 @@ public class MeetupRoom extends BaseTimeEntity {
         this.placeKakaoId = placeKakaoId;
         this.placeAddress = placeAddress;
         this.placeSetBy = setter;
+    }
+
+    /** 약속 시간을 정한다(다시 정하면 마지막 사람으로 덮인다). */
+    public void setMeetAt(LocalDateTime meetAt, User setter) {
+        this.meetAt = meetAt;
+        this.meetAtSetBy = setter;
     }
 
     public void close() { this.status = RoomStatus.CLOSED; }

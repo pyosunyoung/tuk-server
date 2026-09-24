@@ -108,6 +108,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 합류 | `POST /api/flashes/{flashId}/join` | `MeetupRoom`(아래) — 멱등(이미 JOINED면 방만 반환) |
 | 모임방 조회 | `GET /api/flashes/{flashId}/room` | `MeetupRoom` |
 | 장소 설정 | `PATCH /api/flashes/{flashId}/room/place` | 요청 `{ "placeName":"홍대 A카페", "placeLat":37.5, "placeLng":127.0 }` → `MeetupRoom` |
+| 약속 시간 설정 | `PATCH /api/flashes/{flashId}/room/time` | 요청 `{ "meetAt":"2026-09-24T20:00:00" }` → `MeetupRoom` |
 
 **MeetupRoom 응답 형태:**
 ```json
@@ -116,6 +117,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   "placeName": null, "placeLat": null, "placeLng": null,
   "placeKakaoId": null, "placeAddress": null,
   "placeSetById": null, "placeSetByNickname": null,
+  "meetAt": null, "meetAtSetById": null, "meetAtSetByNickname": null,
   "status": "OPEN",
   "expiresAt": "2026-09-22T21:30:00",
   "members": [
@@ -129,7 +131,13 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   장소는 멤버 누구나 다시 정할 수 있고, **마지막으로 바꾼 사람**으로 덮인다.
   (`placeSetById == 내 userId` 면 "내가 정했어요")
 - `placeKakaoId`/`placeAddress` = **검색으로 고른 장소**일 때만 값이 있다(직접 입력이면 둘 다 null).
-- `expiresAt` = 번개 만료 시각. 목록을 거치지 않고 **공유 링크로 방에 바로 들어오는 경로**가 있어서 방 응답에도 담는다.
+- `meetAt` = **만나기로 한 시각**(아직 안 정했으면 null). `meetAtSetById`/`Nickname` 은 마지막으로 정한 멤버 —
+  장소와 같이 **멤버 아무나** 정하고 아무나 바꾼다.
+- `expiresAt` = **모집 마감 시각**(언제까지 합류할 수 있나). 목록을 거치지 않고
+  **공유 링크로 방에 바로 들어오는 경로**가 있어서 방 응답에도 담는다.
+- ⚠️ **`meetAt` 과 `expiresAt` 은 다른 시각이다.** 약속 시간을 정해도 만료는 늘어나지 않는다 —
+  늘리면 "시간 지나면 알아서 꺼져요"라는 제품 약속이 깨진다. 화면에 둘을 같이 보일 땐 반드시 라벨을 붙일 것.
+- 약속 시간 범위: **과거 1시간 ~ 미래 24시간**. 벗어나면 400.
 - 합류 권한: 초대받은(수신 레코드 있는) 사람만. 아니면 403.
 - **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`) push(§2).
 

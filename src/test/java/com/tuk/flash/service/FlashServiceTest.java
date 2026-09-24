@@ -6,6 +6,7 @@ import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
 import com.tuk.flash.domain.MeetupRoom;
 import com.tuk.flash.dto.FlashResponse;
 import com.tuk.flash.dto.MeetupRoomResponse;
+import com.tuk.flash.dto.SetMeetAtRequest;
 import com.tuk.flash.dto.SendFlashRequest;
 import com.tuk.flash.dto.SentFlashResponse;
 import com.tuk.flash.dto.SetPlaceRequest;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -259,6 +261,99 @@ class FlashServiceTest {
         MeetupRoomResponse res = flashService.getRoom(1L, 10L);
 
         assertThat(res.expiresAt()).isEqualTo(room.getExpiresAt());
+    }
+
+    // --- 약속 시간 (PATCH /room/time) ---
+
+    @Test
+    @DisplayName("setMeetAt: 멤버면 약속 시간을 정할 수 있고, 정한 사람이 남는다")
+    void setMeetAtByMember() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        LocalDateTime when = LocalDateTime.now().plusMinutes(90);
+        MeetupRoomResponse res = flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(when));
+
+        assertThat(res.meetAt()).isEqualTo(when);
+        assertThat(res.meetAtSetById()).isEqualTo(1L);
+        assertThat(res.meetAtSetByNickname()).isEqualTo("보낸이");
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 약속 시간을 정해도 만료(모집 마감)는 늘어나지 않는다")
+    void setMeetAtDoesNotExtendExpiry() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        LocalDateTime before = room.getExpiresAt();
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        // 만료보다 한참 뒤로 약속을 잡아도 만료는 그대로여야 한다
+        flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(LocalDateTime.now().plusHours(5)));
+
+        assertThat(room.getExpiresAt()).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 멤버가 아니면 403")
+    void setMeetAtNonMember() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndUserId(10L, 99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> flashService.setMeetAt(99L, 10L,
+                new SetMeetAtRequest(LocalDateTime.now().plusHours(1))))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 이미 지난 시간은 거부 (정각 클릭은 봐준다)")
+    void setMeetAtRejectsPast() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        assertThatThrownBy(() -> flashService.setMeetAt(1L, 10L,
+                new SetMeetAtRequest(LocalDateTime.now().minusHours(3))))
+                .isInstanceOf(BadRequestException.class);
+
+        // 방금 지난 시각은 통과해야 한다 — "8시"를 8시 정각에 누르는 경우
+        assertThatCode(() -> flashService.setMeetAt(1L, 10L,
+                new SetMeetAtRequest(LocalDateTime.now().minusMinutes(1))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 하루를 넘는 시간은 거부")
+    void setMeetAtRejectsTooFar() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+
+        assertThatThrownBy(() -> flashService.setMeetAt(1L, 10L,
+                new SetMeetAtRequest(LocalDateTime.now().plusDays(2))))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("getRoom: 아직 안 정했으면 약속 시간은 null")
+    void roomWithoutMeetAt() {
+        Flash flash = flash(10L, user(1L, "보낸이"));
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+
+        MeetupRoomResponse res = flashService.getRoom(1L, 10L);
+
+        assertThat(res.meetAt()).isNull();
+        assertThat(res.meetAtSetById()).isNull();
+        assertThat(res.meetAtSetByNickname()).isNull();
     }
 
     // --- 내가 띄운 번개 (GET /sent) ---

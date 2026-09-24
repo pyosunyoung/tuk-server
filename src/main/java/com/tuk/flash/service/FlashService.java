@@ -6,6 +6,7 @@ import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
 import com.tuk.flash.domain.MeetupRoom;
 import com.tuk.flash.dto.FlashResponse;
 import com.tuk.flash.dto.MeetupRoomResponse;
+import com.tuk.flash.dto.SetMeetAtRequest;
 import com.tuk.flash.dto.MemberResponse;
 import com.tuk.flash.dto.ReceivedFlashResponse;
 import com.tuk.flash.dto.FlashPushEvent;
@@ -37,6 +38,9 @@ import java.util.Set;
 public class FlashService {
 
     private static final int DEFAULT_DURATION_MINUTES = 60;
+
+    /** 툭은 즉흥 만남이라 약속 시간이 하루를 넘지 않는다(오타 방어). */
+    private static final int MEET_AT_MAX_AHEAD_HOURS = 24;
 
     private final FlashRepository flashRepository;
     private final FlashRecipientRepository flashRecipientRepository;
@@ -234,6 +238,43 @@ public class FlashService {
         }
     }
 
+    /**
+     * 모임방 약속 시간 설정. 멤버라면 아무나 정하고 아무나 바꾼다(장소와 같은 규칙).
+     *
+     * 만료(expiresAt)는 건드리지 않는다. 약속을 늘릴 때마다 만료가 따라 늘어나면
+     * "시간 지나면 알아서 꺼져요"라는 약속이 무의미해진다. 만료는 '모집 마감'이고
+     * 약속 시간은 '만나는 시각' — 서로 다른 일을 한다.
+     */
+    @Transactional
+    public MeetupRoomResponse setMeetAt(Long userId, Long flashId, SetMeetAtRequest request) {
+        MeetupRoom room = requireRoom(flashId);
+        checkMember(userId, room.getFlash());
+
+        LocalDateTime meetAt = request.meetAt();
+        LocalDateTime now = LocalDateTime.now();
+        // 이미 지난 시각은 약속이 될 수 없다. 다만 "8시"를 8시 정각에 누르는 경우가 있어 조금 봐준다.
+        if (meetAt.isBefore(now.minusHours(1))) {
+            throw new BadRequestException("이미 지난 시간이에요.");
+        }
+        // 툭은 즉흥 만남이라 하루를 넘기지 않는다(오타·잘못된 입력 방어).
+        if (meetAt.isAfter(now.plusHours(MEET_AT_MAX_AHEAD_HOURS))) {
+            throw new BadRequestException("하루 안의 시간만 정할 수 있어요.");
+        }
+
+        room.setMeetAt(meetAt, userRepository.getReferenceById(userId));
+        return buildRoomResponse(room);
+    }
+
+    /** 정한 사람은 항상 멤버이므로 members 에서 닉네임을 찾는다(추가 조회 없음). */
+    private static String nicknameOf(List<MemberResponse> members, Long userId) {
+        if (userId == null) return null;
+        return members.stream()
+                .filter(m -> m.userId().equals(userId))
+                .map(MemberResponse::nickname)
+                .findFirst()
+                .orElse(null);
+    }
+
     private MeetupRoomResponse buildRoomResponse(MeetupRoom room) {
         Flash flash = room.getFlash();
         User sender = flash.getSender();
@@ -248,11 +289,10 @@ public class FlashService {
 
         // 장소를 정한 사람. 항상 멤버이므로 members 에서 닉네임을 찾는다(추가 조회 없음).
         Long placeSetById = room.getPlaceSetBy() != null ? room.getPlaceSetBy().getId() : null;
-        String placeSetByNickname = members.stream()
-                .filter(m -> m.userId().equals(placeSetById))
-                .map(MemberResponse::nickname)
-                .findFirst()
-                .orElse(null);
+        String placeSetByNickname = nicknameOf(members, placeSetById);
+
+        Long meetAtSetById = room.getMeetAtSetBy() != null ? room.getMeetAtSetBy().getId() : null;
+        String meetAtSetByNickname = nicknameOf(members, meetAtSetById);
 
         return new MeetupRoomResponse(
                 room.getId(),
@@ -265,6 +305,9 @@ public class FlashService {
                 room.getPlaceAddress(),
                 placeSetById,
                 placeSetByNickname,
+                room.getMeetAt(),
+                meetAtSetById,
+                meetAtSetByNickname,
                 room.getStatus().name(),
                 room.getExpiresAt(),
                 members);

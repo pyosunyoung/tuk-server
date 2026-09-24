@@ -2,6 +2,7 @@ package com.tuk.flash.controller;
 
 import com.tuk.flash.dto.FlashResponse;
 import com.tuk.flash.dto.MeetupRoomResponse;
+import com.tuk.flash.dto.SetMeetAtRequest;
 import com.tuk.flash.dto.ReceivedFlashResponse;
 import com.tuk.flash.dto.SendFlashRequest;
 import com.tuk.flash.dto.SentFlashResponse;
@@ -68,5 +69,13 @@ public class FlashController {
                                        @PathVariable Long flashId,
                                        @Valid @RequestBody SetPlaceRequest request) {
         return flashService.setPlace(userId, flashId, request);
+    }
+
+    /** 모임방 약속 시간 설정. 만료(모집 마감)와는 별개의 시각이다. */
+    @PatchMapping("/{flashId}/room/time")
+    public MeetupRoomResponse setMeetAt(@AuthenticationPrincipal Long userId,
+                                        @PathVariable Long flashId,
+                                        @Valid @RequestBody SetMeetAtRequest request) {
+        return flashService.setMeetAt(userId, flashId, request);
     }
 }
