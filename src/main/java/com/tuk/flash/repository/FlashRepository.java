@@ -3,6 +3,8 @@ package com.tuk.flash.repository;
 import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.Flash.FlashStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,7 +18,21 @@ public interface FlashRepository extends JpaRepository<Flash, Long> {
      */
     List<Flash> findByStatusAndExpiresAtBefore(FlashStatus status, LocalDateTime time);
 
-    /** 내가 띄운 활성 번개: 내가 보낸(sender) + ACTIVE + 만료 전. 최신순. */
-    List<Flash> findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-            Long senderId, FlashStatus status, LocalDateTime now);
+    /**
+     * 홈에 아직 보여야 할, 내가 띄운 툭. 최신순.
+     *
+     * 기준은 "합류 마감이 안 지났거나, **약속 시간이 아직 남았거나**" 다.
+     * 합류가 끝나도 약속 시간까지는 어디서 몇 시에 만나는지 다시 볼 수 있어야 한다
+     * (모임방은 만료돼도 지워지지 않는다 — status 만 CLOSED 가 된다).
+     */
+    @Query("""
+            select f from Flash f
+            where f.sender.id = :senderId
+              and ((f.status = :status and f.expiresAt > :now)
+                   or exists (select 1 from MeetupRoom r where r.flash = f and r.meetAt > :now))
+            order by f.createdAt desc
+            """)
+    List<Flash> findSentStillRelevant(@Param("senderId") Long senderId,
+                                      @Param("status") FlashStatus status,
+                                      @Param("now") LocalDateTime now);
 }

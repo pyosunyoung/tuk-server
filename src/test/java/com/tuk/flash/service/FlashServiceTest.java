@@ -364,8 +364,7 @@ class FlashServiceTest {
         Flash flash = flash(10L, user(1L, "보낸이"));
         FlashRecipient joined = FlashRecipient.builder().flash(flash).user(user(2L, "합류자")).build();
         joined.join();
-        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+        given(flashRepository.findSentStillRelevant(anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
                 .willReturn(List.of(flash));
         given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED))
                 .willReturn(List.of(joined));
@@ -384,8 +383,7 @@ class FlashServiceTest {
                 .sender(user(1L, "보낸이")).activity(Activity.MEAL)
                 .scheduledAt(LocalDateTime.now().plusHours(1))
                 .expiresAt(LocalDateTime.now().plusHours(2)).build(), 11L);
-        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+        given(flashRepository.findSentStillRelevant(anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
                 .willReturn(List.of(reserved));
 
         List<SentFlashResponse> res = flashService.getSentFlashes(1L);
@@ -398,8 +396,7 @@ class FlashServiceTest {
     @Test
     @DisplayName("getSentFlashes: 활성 발송 번개가 없으면 빈 목록")
     void sentEmpty() {
-        given(flashRepository.findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-                anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
+        given(flashRepository.findSentStillRelevant(anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
                 .willReturn(List.of());
 
         assertThat(flashService.getSentFlashes(1L)).isEmpty();

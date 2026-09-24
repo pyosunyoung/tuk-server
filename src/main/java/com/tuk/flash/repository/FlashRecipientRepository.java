@@ -29,14 +29,18 @@ public interface FlashRecipientRepository extends JpaRepository<FlashRecipient, 
             join fetch fr.flash f
             join fetch f.sender
             where fr.user.id = :userId
-              and f.status = :status
-              and f.expiresAt > :now
+              and ((f.status = :status and f.expiresAt > :now)
+                   or exists (select 1 from MeetupRoom r where r.flash = f and r.meetAt > :now))
             order by f.createdAt desc
             """)
     List<FlashRecipient> findReceived(@Param("userId") Long userId,
                                       @Param("status") FlashStatus status,
                                       @Param("now") LocalDateTime now);
 
+    /**
+     * 합류 마감이 지나도 **약속 시간이 남았으면** 계속 보인다 — 합류한 모임을 홈에서 다시 찾을 수 있어야 한다.
+     * 아직 합류 안 한(PENDING) 툭은 마감이 지나면 어차피 조건에서 빠진다(약속 시간이 있을 리 없다).
+     */
     default List<FlashRecipient> findActiveReceived(Long userId, LocalDateTime now) {
         return findReceived(userId, FlashStatus.ACTIVE, now);
     }

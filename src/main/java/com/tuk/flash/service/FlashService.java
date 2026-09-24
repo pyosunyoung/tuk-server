@@ -30,8 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -126,25 +128,43 @@ public class FlashService {
         return requested.stream().filter(friendSet::contains).distinct().toList();
     }
 
-    /** 내가 받은 활성 번개(ACTIVE + 만료 전). PENDING/JOINED 모두 포함. */
+    /** 내가 받은 툭. PENDING/JOINED 모두 포함(합류 마감 전이거나 약속 시간이 남은 것). */
     @Transactional(readOnly = true)
     public List<ReceivedFlashResponse> getReceivedFlashes(Long userId) {
-        return flashRecipientRepository.findActiveReceived(userId, LocalDateTime.now()).stream()
-                .map(ReceivedFlashResponse::from)
+        List<FlashRecipient> received = flashRecipientRepository.findActiveReceived(userId, LocalDateTime.now());
+        Map<Long, LocalDateTime> meetAtByFlashId =
+                meetAtByFlashId(received.stream().map(r -> r.getFlash().getId()).toList());
+        return received.stream()
+                .map(r -> ReceivedFlashResponse.from(r, meetAtByFlashId.get(r.getFlash().getId())))
                 .toList();
     }
 
+    /** flashId → 약속 시간. 목록에서 방마다 조회하면 N+1 이므로 한 번에 가져온다. */
+    private Map<Long, LocalDateTime> meetAtByFlashId(List<Long> flashIds) {
+        if (flashIds.isEmpty()) return Map.of();
+        Map<Long, LocalDateTime> map = new HashMap<>();
+        for (MeetupRoom room : meetupRoomRepository.findByFlashIdIn(flashIds)) {
+            if (room.getMeetAt() != null) {
+                map.put(room.getFlash().getId(), room.getMeetAt());
+            }
+        }
+        return map;
+    }
+
     /**
-     * 내가 띄운 활성 번개(ACTIVE + 만료 전 + 이미 시작됨). 홈 "내가 띄운 번개" 배너용.
-     * 예약이 아직 도달 안 한 번개는 방이 열리기 전이라 제외한다.
+     * 홈 "진행 중인 모임" 에 보일, 내가 띄운 툭.
+     * 합류 마감이 지나도 **약속 시간이 남았으면** 계속 보인다(어디서 몇 시인지 다시 봐야 하므로).
+     * 예약이 아직 도달 안 한 툭은 방이 열리기 전이라 제외한다.
      */
     @Transactional(readOnly = true)
     public List<SentFlashResponse> getSentFlashes(Long userId) {
         LocalDateTime now = LocalDateTime.now();
-        return flashRepository
-                .findBySenderIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(userId, FlashStatus.ACTIVE, now)
-                .stream()
+        List<Flash> flashes = flashRepository.findSentStillRelevant(userId, FlashStatus.ACTIVE, now).stream()
                 .filter(flash -> flash.getScheduledAt() == null || !flash.getScheduledAt().isAfter(now))
+                .toList();
+        Map<Long, LocalDateTime> meetAtByFlashId =
+                meetAtByFlashId(flashes.stream().map(Flash::getId).toList());
+        return flashes.stream()
                 .map(flash -> {
                     List<MemberResponse> joined = flashRecipientRepository
                             .findByFlashIdAndStatus(flash.getId(), RecipientStatus.JOINED).stream()
@@ -152,7 +172,8 @@ public class FlashService {
                                     r.getUser().getProfileImage(), false))
                             .toList();
                     return new SentFlashResponse(flash.getId(), flash.getActivity(), flash.getMessage(),
-                            flash.getScheduledAt(), flash.getExpiresAt(), joined);
+                            flash.getScheduledAt(), flash.getExpiresAt(),
+                            meetAtByFlashId.get(flash.getId()), joined);
                 })
                 .toList();
     }

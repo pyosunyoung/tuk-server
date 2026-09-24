@@ -2,6 +2,7 @@ package com.tuk.flash.repository;
 
 import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.FlashRecipient;
+import com.tuk.flash.domain.MeetupRoom;
 import com.tuk.global.common.Activity;
 import com.tuk.global.config.JpaAuditingConfig;
 import com.tuk.user.domain.User;
@@ -29,6 +30,9 @@ class FlashRecipientRepositoryTest {
     @Autowired FlashRecipientRepository flashRecipientRepository;
     @Autowired UserRepository userRepository;
     @Autowired EntityManager em;
+
+    @Autowired
+    MeetupRoomRepository meetupRoomRepository;
 
     User sender, me, other;
     LocalDateTime now;
@@ -64,6 +68,27 @@ class FlashRecipientRepositoryTest {
     }
 
     @Test
+    @DisplayName("findActiveReceived: 합류 마감이 지나도 약속 시간이 남았으면 계속 보인다")
+    void keepsRoomsWithFutureMeetAt() {
+        // 마감도 지났고 만료 처리도 됐지만, 약속은 아직 남은 모임 — 어디서 몇 시인지 다시 봐야 한다
+        Flash past = flash("meeting-tonight", now.minusHours(1), true);
+        room(past, now.plusHours(2));
+        recipient(past, me, true);
+
+        // 약속을 안 정한 채 마감이 지난 것은 그대로 사라진다
+        Flash forgotten = flash("no-meet-at", now.minusHours(1), true);
+        room(forgotten, null);
+        recipient(forgotten, me, true);
+
+        em.flush();
+        em.clear();
+
+        assertThat(flashRecipientRepository.findActiveReceived(me.getId(), now))
+                .extracting(fr -> fr.getFlash().getMessage())
+                .containsExactly("meeting-tonight");
+    }
+
+    @Test
     @DisplayName("findByFlashIdAndUserId: (flash, user) 로 단건 조회 — 멱등 합류의 기반")
     void findByFlashIdAndUserId() {
         Flash flash = flash("hi", now.plusHours(1), false);
@@ -92,6 +117,12 @@ class FlashRecipientRepositoryTest {
                 .build();
         if (expired) f.expire();
         return flashRepository.save(f);
+    }
+
+    private void room(Flash flash, LocalDateTime meetAt) {
+        MeetupRoom r = MeetupRoom.builder().flash(flash).expiresAt(flash.getExpiresAt()).build();
+        if (meetAt != null) r.setMeetAt(meetAt, sender);
+        meetupRoomRepository.save(r);
     }
 
     private void recipient(Flash flash, User user, boolean joined) {
