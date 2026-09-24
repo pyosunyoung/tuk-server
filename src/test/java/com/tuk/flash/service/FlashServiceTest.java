@@ -364,16 +364,20 @@ class FlashServiceTest {
         Flash flash = flash(10L, user(1L, "보낸이"));
         FlashRecipient joined = FlashRecipient.builder().flash(flash).user(user(2L, "합류자")).build();
         joined.join();
+        FlashRecipient pending = FlashRecipient.builder().flash(flash).user(user(3L, "안온사람")).build();
         given(flashRepository.findSentStillRelevant(anyLong(), any(Flash.FlashStatus.class), any(LocalDateTime.class)))
                 .willReturn(List.of(flash));
-        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED))
-                .willReturn(List.of(joined));
+        given(flashRecipientRepository.findByFlashIdIn(List.of(10L)))
+                .willReturn(List.of(joined, pending));
 
         List<SentFlashResponse> res = flashService.getSentFlashes(1L);
 
         assertThat(res).hasSize(1);
         assertThat(res.get(0).flashId()).isEqualTo(10L);
+        // 합류자만 모임방 멤버로
         assertThat(res.get(0).joinedMembers()).extracting("nickname").containsExactly("합류자");
+        // recipientIds 는 합류 여부와 무관하게 초대받은 전부 — 중복 발송 안내에 쓴다
+        assertThat(res.get(0).recipientIds()).containsExactlyInAnyOrder(2L, 3L);
     }
 
     @Test

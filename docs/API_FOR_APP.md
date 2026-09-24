@@ -104,7 +104,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 동작 | API | 응답 |
 |---|---|---|
 | 받은 활성 번개 | `GET /api/flashes/received` | `[{ flashId, senderId, senderNickname, senderProfileImage, activity, message, scheduledAt, expiresAt, myStatus }]` |
-| 내가 띄운 활성 번개 | `GET /api/flashes/sent` | `[{ flashId, activity, message, scheduledAt, expiresAt, joinedMembers:[{ userId, nickname, profileImage, sender:false }] }]` (홈 "내가 띄운 번개" 배너용. 시작된 ACTIVE 번개만, 합류자만 포함, `{N}명 모였어요`=joinedMembers 수) |
+| 내가 띄운 활성 번개 | `GET /api/flashes/sent` | `[{ flashId, activity, message, scheduledAt, expiresAt, meetAt, recipientIds:[341], joinedMembers:[{ userId, nickname, profileImage, sender:false }] }]` (홈 "내가 띄운 번개" 배너용. 시작된 ACTIVE 번개만, 합류자만 포함, `{N}명 모였어요`=joinedMembers 수) |
 | 합류 | `POST /api/flashes/{flashId}/join` | `MeetupRoom`(아래) — 멱등(이미 JOINED면 방만 반환) |
 | 모임방 조회 | `GET /api/flashes/{flashId}/room` | `MeetupRoom` |
 | 장소 설정 | `PATCH /api/flashes/{flashId}/room/place` | 요청 `{ "placeName":"홍대 A카페", "placeLat":37.5, "placeLng":127.0 }` → `MeetupRoom` |
@@ -137,6 +137,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   **공유 링크로 방에 바로 들어오는 경로**가 있어서 방 응답에도 담는다.
 - ⚠️ **`meetAt` 과 `expiresAt` 은 다른 시각이다.** 약속 시간을 정해도 만료는 늘어나지 않는다 —
   늘리면 "시간 지나면 알아서 꺼져요"라는 제품 약속이 깨진다. 화면에 둘을 같이 보일 땐 반드시 라벨을 붙일 것.
+  (만료돼도 방은 지워지지 않고 `status: CLOSED` 가 될 뿐이라, 링크로는 계속 열린다)
 - 약속 시간 범위: **과거 1시간 ~ 미래 24시간**. 벗어나면 400.
 - 합류 권한: 초대받은(수신 레코드 있는) 사람만. 아니면 403.
 - **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`) push(§2).

@@ -162,18 +162,32 @@ public class FlashService {
         List<Flash> flashes = flashRepository.findSentStillRelevant(userId, FlashStatus.ACTIVE, now).stream()
                 .filter(flash -> flash.getScheduledAt() == null || !flash.getScheduledAt().isAfter(now))
                 .toList();
-        Map<Long, LocalDateTime> meetAtByFlashId =
-                meetAtByFlashId(flashes.stream().map(Flash::getId).toList());
+        List<Long> flashIds = flashes.stream().map(Flash::getId).toList();
+        Map<Long, LocalDateTime> meetAtByFlashId = meetAtByFlashId(flashIds);
+
+        // 수신자를 한 번에 가져와 flash 별로 나눈다(예전엔 flash 마다 조회해 N+1 이었다)
+        Map<Long, List<FlashRecipient>> recipientsByFlashId = new HashMap<>();
+        if (!flashIds.isEmpty()) {
+            for (FlashRecipient r : flashRecipientRepository.findByFlashIdIn(flashIds)) {
+                recipientsByFlashId.computeIfAbsent(r.getFlash().getId(), k -> new ArrayList<>()).add(r);
+            }
+        }
+
         return flashes.stream()
                 .map(flash -> {
-                    List<MemberResponse> joined = flashRecipientRepository
-                            .findByFlashIdAndStatus(flash.getId(), RecipientStatus.JOINED).stream()
+                    List<FlashRecipient> recipients =
+                            recipientsByFlashId.getOrDefault(flash.getId(), List.of());
+                    List<Long> recipientIds = recipients.stream()
+                            .map(r -> r.getUser().getId())
+                            .toList();
+                    List<MemberResponse> joined = recipients.stream()
+                            .filter(r -> r.getStatus() == RecipientStatus.JOINED)
                             .map(r -> new MemberResponse(r.getUser().getId(), r.getUser().getNickname(),
                                     r.getUser().getProfileImage(), false))
                             .toList();
                     return new SentFlashResponse(flash.getId(), flash.getActivity(), flash.getMessage(),
                             flash.getScheduledAt(), flash.getExpiresAt(),
-                            meetAtByFlashId.get(flash.getId()), joined);
+                            meetAtByFlashId.get(flash.getId()), recipientIds, joined);
                 })
                 .toList();
     }

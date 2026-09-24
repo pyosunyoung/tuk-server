@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,17 @@ public interface FlashRecipientRepository extends JpaRepository<FlashRecipient, 
 
     /** 모임방 멤버 = 특정 번개의 JOINED 수신자(별도 멤버 테이블 없음). */
     List<FlashRecipient> findByFlashIdAndStatus(Long flashId, RecipientStatus status);
+
+    /**
+     * 목록 화면용 배치 조회. flash 마다 수신자를 따로 조회하면 N+1 이 된다.
+     * user 를 fetch join 해서 닉네임까지 한 번에 가져온다.
+     */
+    @Query("""
+            select fr from FlashRecipient fr
+            join fetch fr.user
+            where fr.flash.id in :flashIds
+            """)
+    List<FlashRecipient> findByFlashIdIn(@Param("flashIds") Collection<Long> flashIds);
 
     /**
      * "내가 받은 활성 번개": ACTIVE + 아직 만료 전인 번개만.
