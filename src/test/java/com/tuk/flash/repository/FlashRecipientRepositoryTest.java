@@ -111,6 +111,28 @@ class FlashRecipientRepositoryTest {
     }
 
     @Test
+    @DisplayName("findSentStillRelevant: 아무도 합류 안 한 모임은 약속 시간이 있어도 마감과 함께 사라진다")
+    void sentDropsWhenNobodyJoined() {
+        // 약속 시간은 모인 사람들 사이의 약속이다. 혼자 남은 방에 시간만 적혀 있으면
+        // "누구와 만나는지 알 수 없는" 카드가 홈에 남는다.
+        Flash lonely = flash("nobody-joined", now.minusHours(1), true);
+        room(lonely, now.plusHours(2));
+        recipient(lonely, me, false); // 초대는 했지만 합류 안 함
+
+        Flash real = flash("someone-joined", now.minusHours(1), true);
+        room(real, now.plusHours(2));
+        recipient(real, me, true); // 합류함
+
+        em.flush();
+        em.clear();
+
+        assertThat(flashRepository.findSentStillRelevant(
+                sender.getId(), Flash.FlashStatus.ACTIVE, now))
+                .extracting(Flash::getMessage)
+                .containsExactly("someone-joined");
+    }
+
+    @Test
     @DisplayName("findByFlashIdAndUserId: (flash, user) 로 단건 조회 — 멱등 합류의 기반")
     void findByFlashIdAndUserId() {
         Flash flash = flash("hi", now.plusHours(1), false);
