@@ -89,6 +89,28 @@ class FlashRecipientRepositoryTest {
     }
 
     @Test
+    @DisplayName("findActiveReceived: 합류 안 한 툭은 약속 시간이 잡혀 있어도 마감과 함께 사라진다")
+    void dropsPendingEvenWhenRoomHasMeetAt() {
+        // 보낸 사람도 멤버라 약속 시간을 잡을 수 있다. 그렇다고 합류 안 한 사람의 목록에 남기면
+        // 합류도 못 하는 죽은 초대가 계속 보인다("합류하기"를 눌러도 400).
+        Flash past = flash("not-joined", now.minusHours(1), true);
+        room(past, now.plusHours(2));
+        recipient(past, me, false); // PENDING
+
+        // 같은 조건이라도 합류했으면 남아야 한다
+        Flash joined = flash("joined", now.minusHours(1), true);
+        room(joined, now.plusHours(2));
+        recipient(joined, me, true); // JOINED
+
+        em.flush();
+        em.clear();
+
+        assertThat(flashRecipientRepository.findActiveReceived(me.getId(), now))
+                .extracting(fr -> fr.getFlash().getMessage())
+                .containsExactly("joined");
+    }
+
+    @Test
     @DisplayName("findByFlashIdAndUserId: (flash, user) 로 단건 조회 — 멱등 합류의 기반")
     void findByFlashIdAndUserId() {
         Flash flash = flash("hi", now.plusHours(1), false);
