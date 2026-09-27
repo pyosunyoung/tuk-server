@@ -6,6 +6,7 @@ import com.tuk.friendship.dto.FriendRequestResult;
 import com.tuk.friendship.dto.FriendResponse;
 import com.tuk.friendship.dto.InviteCodeResponse;
 import com.tuk.friendship.dto.ReceivedRequestResponse;
+import com.tuk.friendship.dto.SentRequestResponse;
 import com.tuk.friendship.event.FriendshipEvent;
 import com.tuk.friendship.repository.FriendshipRepository;
 import com.tuk.global.exception.BadRequestException;
@@ -113,6 +114,14 @@ public class FriendshipService {
         return userRepository.findById(userId)
                 .map(User::getNickname)
                 .orElse("친구");
+    }
+
+    /** 내가 보낸 신청(아직 수락 전) 목록. */
+    @Transactional(readOnly = true)
+    public List<SentRequestResponse> getSentRequests(Long userId) {
+        return friendshipRepository.findPendingSent(userId).stream()
+                .map(SentRequestResponse::from)
+                .toList();
     }
 
     /** 내가 받은 수락 대기 신청 목록. */

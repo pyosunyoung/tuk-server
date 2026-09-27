@@ -32,6 +32,19 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
         return findReceivedRequests(userId, FriendshipStatus.PENDING);
     }
 
+    /** 내가 보낸 친구 신청(아직 수락 안 됨). 받는 사람(addressee)까지 fetch. */
+    @Query("""
+            select f from Friendship f
+            join fetch f.addressee
+            where f.requester.id = :userId and f.status = :status
+            """)
+    List<Friendship> findSentRequests(@Param("userId") Long userId,
+                                      @Param("status") FriendshipStatus status);
+
+    default List<Friendship> findPendingSent(Long userId) {
+        return findSentRequests(userId, FriendshipStatus.PENDING);
+    }
+
     /**
      * 절친 ID 목록(방향 무관, ACCEPTED).
      * "지금 한가한 친구 조회"의 1단계 + 번개 대상 서버측 절친 재검증의 기준이 된다.

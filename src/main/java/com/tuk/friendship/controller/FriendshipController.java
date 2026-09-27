@@ -4,6 +4,7 @@ import com.tuk.friendship.dto.FriendRequestResult;
 import com.tuk.friendship.dto.FriendResponse;
 import com.tuk.friendship.dto.InviteCodeResponse;
 import com.tuk.friendship.dto.ReceivedRequestResponse;
+import com.tuk.friendship.dto.SentRequestResponse;
 import com.tuk.friendship.dto.RedeemInviteRequest;
 import com.tuk.friendship.dto.SendFriendRequest;
 import com.tuk.friendship.service.FriendshipService;
@@ -46,6 +47,12 @@ public class FriendshipController {
     @GetMapping("/requests")
     public List<ReceivedRequestResponse> receivedRequests(@AuthenticationPrincipal Long userId) {
         return friendshipService.getReceivedRequests(userId);
+    }
+
+    /** 내가 보낸 신청(아직 수락 전) 목록. */
+    @GetMapping("/requests/sent")
+    public List<SentRequestResponse> sentRequests(@AuthenticationPrincipal Long userId) {
+        return friendshipService.getSentRequests(userId);
     }
 
     /** 내 친구 목록. */
