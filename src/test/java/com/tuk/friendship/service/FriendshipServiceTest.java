@@ -2,6 +2,7 @@ package com.tuk.friendship.service;
 
 import com.tuk.friendship.domain.Friendship;
 import com.tuk.friendship.dto.FriendRequestResult;
+import com.tuk.friendship.event.FriendshipEvent;
 import com.tuk.friendship.dto.InviteCodeResponse;
 import com.tuk.friendship.repository.FriendshipRepository;
 import com.tuk.global.exception.BadRequestException;
@@ -12,7 +13,9 @@ import com.tuk.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,6 +36,7 @@ class FriendshipServiceTest {
 
     @Mock FriendshipRepository friendshipRepository;
     @Mock UserRepository userRepository;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks FriendshipService friendshipService;
 
     @Test
@@ -227,6 +231,76 @@ class FriendshipServiceTest {
 
         assertThat(result.friendshipId()).isEqualTo(101L);
         assertThat(result.status()).isEqualTo("PENDING");
+    }
+
+    // --- 알림 (누구에게 어떤 종류로 가는가) ---
+
+    @Test
+    @DisplayName("알림: 새 신청이면 받는 사람에게 FRIEND_REQUEST")
+    void notifiesAddresseeOnNewRequest() {
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user(1L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.empty());
+        given(userRepository.getReferenceById(1L)).willReturn(user(1L));
+        given(friendshipRepository.saveAndFlush(any(Friendship.class)))
+                .willAnswer(inv -> withId(inv.getArgument(0), 77L));
+
+        friendshipService.sendRequest(1L, 2L);
+
+        ArgumentCaptor<FriendshipEvent> captor = ArgumentCaptor.forClass(FriendshipEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(FriendshipEvent.Type.FRIEND_REQUEST);
+        assertThat(captor.getValue().targetUserId()).isEqualTo(2L);   // 받는 사람
+        assertThat(captor.getValue().actorNickname()).isEqualTo("u1"); // 신청한 사람
+    }
+
+    @Test
+    @DisplayName("알림: 수락하면 신청했던 사람에게 FRIEND_ACCEPTED")
+    void notifiesRequesterOnAccept() {
+        Friendship pending = Friendship.builder().requester(user(2L)).addressee(user(1L)).build();
+        withId(pending, 55L);
+        given(friendshipRepository.findById(55L)).willReturn(Optional.of(pending));
+
+        friendshipService.accept(1L, 55L);
+
+        ArgumentCaptor<FriendshipEvent> captor = ArgumentCaptor.forClass(FriendshipEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(FriendshipEvent.Type.FRIEND_ACCEPTED);
+        assertThat(captor.getValue().targetUserId()).isEqualTo(2L);   // 신청했던 사람
+        assertThat(captor.getValue().actorNickname()).isEqualTo("u1"); // 수락한 사람
+    }
+
+    @Test
+    @DisplayName("알림: 맞신청으로 즉시 친구가 되면 '신청 왔어요'가 아니라 '친구가 됐어요'")
+    void notifiesAcceptedOnMutualRequest() {
+        // 2 -> 1 이 이미 PENDING 인데 1 이 2 에게 신청 → 즉시 ACCEPTED
+        Friendship reverse = Friendship.builder().requester(user(2L)).addressee(user(1L)).build();
+        withId(reverse, 55L);
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user(1L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(reverse));
+
+        friendshipService.sendRequest(1L, 2L);
+
+        ArgumentCaptor<FriendshipEvent> captor = ArgumentCaptor.forClass(FriendshipEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        // 먼저 신청했던 2 번에게, "친구가 됐어요" 로
+        assertThat(captor.getValue().type()).isEqualTo(FriendshipEvent.Type.FRIEND_ACCEPTED);
+        assertThat(captor.getValue().targetUserId()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("알림: 실패한 신청(이미 친구)은 아무 알림도 내보내지 않는다")
+    void noEventWhenRequestFails() {
+        Friendship accepted = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        accepted.accept();
+        given(userRepository.findById(2L)).willReturn(Optional.of(user(2L)));
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(accepted));
+
+        assertThatThrownBy(() -> friendshipService.sendRequest(1L, 2L))
+                .isInstanceOf(BadRequestException.class);
+
+        verify(eventPublisher, never()).publishEvent(any(FriendshipEvent.class));
     }
 
     private static User user(Long id) {
