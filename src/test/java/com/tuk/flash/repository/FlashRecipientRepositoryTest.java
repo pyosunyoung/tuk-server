@@ -2,6 +2,7 @@ package com.tuk.flash.repository;
 
 import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.FlashRecipient;
+import com.tuk.flash.domain.MeetupLifecycle;
 import com.tuk.flash.domain.MeetupRoom;
 import com.tuk.global.common.Activity;
 import com.tuk.global.config.JpaAuditingConfig;
@@ -75,10 +76,10 @@ class FlashRecipientRepositoryTest {
         room(past, now.plusHours(2));
         recipient(past, me, true);
 
-        // 약속을 안 정한 채 마감이 지난 것은 그대로 사라진다
-        Flash forgotten = flash("no-meet-at", now.minusHours(1), true);
-        room(forgotten, null);
-        recipient(forgotten, me, true);
+        // 약속 시간이 이미 지난 것은 사라진다
+        Flash done = flash("met-already", now.minusHours(3), true);
+        room(done, now.minusMinutes(30));
+        recipient(done, me, true);
 
         em.flush();
         em.clear();
@@ -86,6 +87,55 @@ class FlashRecipientRepositoryTest {
         assertThat(flashRecipientRepository.findActiveReceived(me.getId(), now))
                 .extracting(fr -> fr.getFlash().getMessage())
                 .containsExactly("meeting-tonight");
+    }
+
+    @Test
+    @DisplayName("findActiveReceived: 합류했는데 약속 시간을 안 정했으면 마감 후 6시간까지 보인다")
+    void keepsUnscheduledJoinedRoomsForGracePeriod() {
+        // 마감 1분 전에 합류했거나 아직 시간을 고민 중인 모임이 마감과 함께 사라지면 안 된다
+        Flash recent = flash("closed-1h-ago", now.minusHours(1), true);
+        room(recent, null);
+        recipient(recent, me, true);
+
+        Flash stale = flash("closed-7h-ago", now.minusHours(7), true);
+        room(stale, null);
+        recipient(stale, me, true);
+
+        // 합류 안 한 사람에겐 연장하지 않는다(죽은 초대)
+        Flash pending = flash("pending-1h-ago", now.minusHours(1), true);
+        room(pending, null);
+        recipient(pending, me, false);
+
+        em.flush();
+        em.clear();
+
+        assertThat(flashRecipientRepository.findActiveReceived(me.getId(), now))
+                .extracting(fr -> fr.getFlash().getMessage())
+                .containsExactly("closed-1h-ago");
+    }
+
+    @Test
+    @DisplayName("findSentStillRelevant: 합류자가 있고 약속 시간이 없으면 마감 후 6시간까지, 합류자 0명이면 마감까지")
+    void sentKeepsUnscheduledFormedRoomsForGracePeriod() {
+        Flash formed = flash("formed", now.minusHours(1), true);
+        room(formed, null);
+        recipient(formed, me, true);
+
+        Flash stale = flash("formed-but-stale", now.minusHours(7), true);
+        room(stale, null);
+        recipient(stale, me, true);
+
+        Flash lonely = flash("nobody", now.minusHours(1), true);
+        room(lonely, null);
+        recipient(lonely, me, false);
+
+        em.flush();
+        em.clear();
+
+        assertThat(flashRepository.findSentStillRelevant(
+                sender.getId(), Flash.FlashStatus.ACTIVE, now, MeetupLifecycle.unscheduledCutoff(now)))
+                .extracting(Flash::getMessage)
+                .containsExactly("formed");
     }
 
     @Test
@@ -127,7 +177,7 @@ class FlashRecipientRepositoryTest {
         em.clear();
 
         assertThat(flashRepository.findSentStillRelevant(
-                sender.getId(), Flash.FlashStatus.ACTIVE, now))
+                sender.getId(), Flash.FlashStatus.ACTIVE, now, MeetupLifecycle.unscheduledCutoff(now)))
                 .extracting(Flash::getMessage)
                 .containsExactly("someone-joined");
     }

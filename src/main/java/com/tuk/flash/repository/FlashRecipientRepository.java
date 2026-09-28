@@ -3,6 +3,7 @@ package com.tuk.flash.repository;
 import com.tuk.flash.domain.Flash.FlashStatus;
 import com.tuk.flash.domain.FlashRecipient;
 import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
+import com.tuk.flash.domain.MeetupLifecycle;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -43,21 +44,24 @@ public interface FlashRecipientRepository extends JpaRepository<FlashRecipient, 
             where fr.user.id = :userId
               and ((f.status = :status and f.expiresAt > :now)
                    or (fr.status = com.tuk.flash.domain.FlashRecipient$RecipientStatus.JOINED
-                       and exists (select 1 from MeetupRoom r where r.flash = f and r.meetAt > :now)))
+                       and exists (select 1 from MeetupRoom r where r.flash = f
+                                   and (r.meetAt > :now or (r.meetAt is null and f.expiresAt > :unscheduledCutoff)))))
             order by f.createdAt desc
             """)
     List<FlashRecipient> findReceived(@Param("userId") Long userId,
                                       @Param("status") FlashStatus status,
-                                      @Param("now") LocalDateTime now);
+                                      @Param("now") LocalDateTime now,
+                                      @Param("unscheduledCutoff") LocalDateTime unscheduledCutoff);
 
     /**
-     * 합류 마감이 지나도 **내가 합류한** 모임은 약속 시간까지 계속 보인다 — 어디서 몇 시인지 다시 봐야 하므로.
+     * 합류 마감이 지나도 **내가 합류한** 모임은 약속 시간까지(없으면 마감 후 6시간까지) 계속 보인다
+     * — 어디서 몇 시인지 다시 봐야 하므로. 규칙은 {@link com.tuk.flash.domain.MeetupLifecycle}.
      *
      * 합류 연장은 **JOINED 에만** 적용한다. 보낸 사람도 멤버라 약속 시간을 잡을 수 있는데,
      * 그걸 근거로 PENDING 까지 남기면 **합류도 못 하는 죽은 초대가 목록에 계속 뜬다**
      * ("합류하기"를 눌러도 400). 실제로 그랬다.
      */
     default List<FlashRecipient> findActiveReceived(Long userId, LocalDateTime now) {
-        return findReceived(userId, FlashStatus.ACTIVE, now);
+        return findReceived(userId, FlashStatus.ACTIVE, now, MeetupLifecycle.unscheduledCutoff(now));
     }
 }

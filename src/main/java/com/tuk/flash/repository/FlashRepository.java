@@ -19,10 +19,10 @@ public interface FlashRepository extends JpaRepository<Flash, Long> {
     List<Flash> findByStatusAndExpiresAtBefore(FlashStatus status, LocalDateTime time);
 
     /**
-     * 홈에 아직 보여야 할, 내가 띄운 툭. 최신순.
+     * 홈에 아직 보여야 할, 내가 띄운 툭. 최신순. 규칙은 {@link com.tuk.flash.domain.MeetupLifecycle}.
      *
-     * 기준은 "합류 마감 전" 이거나 "**모임이 성사됐고** 약속 시간이 남았거나" 다.
-     * 합류가 끝나도 약속 시간까지는 어디서 몇 시에 만나는지 다시 볼 수 있어야 한다
+     * 합류 마감 전이면 보인다. 마감이 지나도 **모임이 성사됐으면**(합류자 ≥ 1)
+     * 약속 시간까지, 약속 시간이 없으면 마감 후 6시간(unscheduledCutoff)까지 보인다
      * (모임방은 만료돼도 지워지지 않는다 — status 만 CLOSED 가 된다).
      *
      * **아무도 합류하지 않았으면 연장하지 않는다.** 약속 시간은 모인 사람들 사이의 약속이라,
@@ -32,12 +32,14 @@ public interface FlashRepository extends JpaRepository<Flash, Long> {
             select f from Flash f
             where f.sender.id = :senderId
               and ((f.status = :status and f.expiresAt > :now)
-                   or (exists (select 1 from MeetupRoom r where r.flash = f and r.meetAt > :now)
+                   or (exists (select 1 from MeetupRoom r where r.flash = f
+                               and (r.meetAt > :now or (r.meetAt is null and f.expiresAt > :unscheduledCutoff)))
                        and exists (select 1 from FlashRecipient fr where fr.flash = f
                                    and fr.status = com.tuk.flash.domain.FlashRecipient$RecipientStatus.JOINED)))
             order by f.createdAt desc
             """)
     List<Flash> findSentStillRelevant(@Param("senderId") Long senderId,
                                       @Param("status") FlashStatus status,
-                                      @Param("now") LocalDateTime now);
+                                      @Param("now") LocalDateTime now,
+                                      @Param("unscheduledCutoff") LocalDateTime unscheduledCutoff);
 }

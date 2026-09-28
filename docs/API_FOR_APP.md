@@ -103,8 +103,12 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 ### 📥 받은 번개 / 합류 / 모임방
 | 동작 | API | 응답 |
 |---|---|---|
-| 받은 활성 번개 | `GET /api/flashes/received` | `[{ flashId, senderId, senderNickname, senderProfileImage, activity, message, scheduledAt, expiresAt, myStatus }]` |
-| 내가 띄운 활성 번개 | `GET /api/flashes/sent` | `[{ flashId, activity, message, scheduledAt, expiresAt, meetAt, recipientIds:[341], joinedMembers:[{ userId, nickname, profileImage, sender:false }] }]` (홈 "내가 띄운 번개" 배너용. 시작된 ACTIVE 번개만, 합류자만 포함, `{N}명 모였어요`=joinedMembers 수) |
+| 받은 활성 번개 | `GET /api/flashes/received` | `[{ flashId, senderId, senderNickname, senderProfileImage, activity, message, scheduledAt, expiresAt, meetAt, visibleUntil, myStatus }]` |
+| 내가 띄운 활성 번개 | `GET /api/flashes/sent` | `[{ flashId, activity, message, scheduledAt, expiresAt, meetAt, visibleUntil, recipientIds:[341], joinedMembers:[{ userId, nickname, profileImage, sender:false }] }]` (홈 "내가 띄운 번개" 배너용. 시작된 ACTIVE 번개만, 합류자만 포함, `{N}명 모였어요`=joinedMembers 수) |
+
+- `visibleUntil` = **목록에서 치울 시각.** 앱은 이 값만 보고 지운다(규칙을 앱에 따로 두지 말 것).
+  성사 안 됨(합류자 0명 / 나는 미합류) → 합류 마감까지 · 성사 + 약속 시간 있음 → 마감과 약속 중 늦은 쪽 ·
+  **성사 + 약속 시간 없음 → 마감 후 6시간**. 규칙은 서버 `MeetupLifecycle` 한 곳에 있다.
 | 합류 | `POST /api/flashes/{flashId}/join` | `MeetupRoom`(아래) — 멱등(이미 JOINED면 방만 반환) |
 | 모임방 조회 | `GET /api/flashes/{flashId}/room` | `MeetupRoom` |
 | 장소 설정 | `PATCH /api/flashes/{flashId}/room/place` | 요청 `{ "placeName":"홍대 A카페", "placeLat":37.5, "placeLng":127.0 }` → `MeetupRoom` |

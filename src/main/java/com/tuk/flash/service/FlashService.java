@@ -3,6 +3,7 @@ package com.tuk.flash.service;
 import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.FlashRecipient;
 import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
+import com.tuk.flash.domain.MeetupLifecycle;
 import com.tuk.flash.domain.MeetupRoom;
 import com.tuk.flash.dto.FlashResponse;
 import com.tuk.flash.dto.MeetupRoomResponse;
@@ -153,13 +154,14 @@ public class FlashService {
 
     /**
      * 홈 "진행 중인 모임" 에 보일, 내가 띄운 툭.
-     * 합류 마감이 지나도 **약속 시간이 남았으면** 계속 보인다(어디서 몇 시인지 다시 봐야 하므로).
+     * 합류 마감이 지나도 성사된 모임은 계속 보인다(어디서 몇 시인지 다시 봐야 하므로 — MeetupLifecycle).
      * 예약이 아직 도달 안 한 툭은 방이 열리기 전이라 제외한다.
      */
     @Transactional(readOnly = true)
     public List<SentFlashResponse> getSentFlashes(Long userId) {
         LocalDateTime now = LocalDateTime.now();
-        List<Flash> flashes = flashRepository.findSentStillRelevant(userId, FlashStatus.ACTIVE, now).stream()
+        List<Flash> flashes = flashRepository.findSentStillRelevant(userId, FlashStatus.ACTIVE, now,
+                        MeetupLifecycle.unscheduledCutoff(now)).stream()
                 .filter(flash -> flash.getScheduledAt() == null || !flash.getScheduledAt().isAfter(now))
                 .toList();
         List<Long> flashIds = flashes.stream().map(Flash::getId).toList();
@@ -185,9 +187,11 @@ public class FlashService {
                             .map(r -> new MemberResponse(r.getUser().getId(), r.getUser().getNickname(),
                                     r.getUser().getProfileImage(), false))
                             .toList();
+                    LocalDateTime meetAt = meetAtByFlashId.get(flash.getId());
                     return new SentFlashResponse(flash.getId(), flash.getActivity(), flash.getMessage(),
-                            flash.getScheduledAt(), flash.getExpiresAt(),
-                            meetAtByFlashId.get(flash.getId()), recipientIds, joined);
+                            flash.getScheduledAt(), flash.getExpiresAt(), meetAt,
+                            MeetupLifecycle.visibleUntil(flash.getExpiresAt(), meetAt, !joined.isEmpty()),
+                            recipientIds, joined);
                 })
                 .toList();
     }

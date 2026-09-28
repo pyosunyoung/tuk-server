@@ -11,6 +11,7 @@ import java.util.List;
  * recipientIds = 이 툭을 받은 절친 전부(합류 여부 무관). 앱이 "이 친구들에겐 이미 띄웠어요" 를
  * 알려주는 데 쓴다 — 같은 사람들에게 실수로 두 번 띄우면 모임방이 둘로 갈라진다.
  * joinedMembers = 합류한 수신자만(보낸 사람 제외). "{N}명 모였어요"는 joinedMembers.size().
+ * visibleUntil = 목록에서 치울 시각. 앱은 이 값만 보고 지운다(규칙은 MeetupLifecycle).
  */
 public record SentFlashResponse(
         Long flashId,
@@ -19,6 +20,7 @@ public record SentFlashResponse(
         LocalDateTime scheduledAt,
         LocalDateTime expiresAt,
         LocalDateTime meetAt,
+        LocalDateTime visibleUntil,
         List<Long> recipientIds,
         List<MemberResponse> joinedMembers) {
 }
