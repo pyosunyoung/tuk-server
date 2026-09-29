@@ -35,7 +35,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Service
 public class FlashService {
@@ -221,23 +223,31 @@ public class FlashService {
     }
 
     private void publishMemberJoined(Long joinerId, Long flashId, MeetupRoomResponse room) {
-        MemberResponse joiner = room.members().stream()
-                .filter(m -> m.userId().equals(joinerId))
+        publishToOtherMembers(joinerId, room, joiner -> FlashPushEvent.memberJoined(
+                flashId, joiner.userId(), joiner.nickname(), joiner.profileImage()));
+    }
+
+    /**
+     * 커밋 이후, 행동한 사람을 뺀 모임방 멤버에게 전파한다(접속 중이면 WebSocket, 아니면 FCM).
+     * 행동한 사람은 항상 멤버라 members 에서 닉네임을 찾는다(추가 조회 없음).
+     */
+    private void publishToOtherMembers(Long actorId, MeetupRoomResponse room,
+                                       Function<MemberResponse, FlashPushEvent> payloadFor) {
+        MemberResponse actor = room.members().stream()
+                .filter(m -> m.userId().equals(actorId))
                 .findFirst()
                 .orElse(null);
-        if (joiner == null) {
+        if (actor == null) {
             return;
         }
         List<Long> notifyTargets = room.members().stream()
                 .map(MemberResponse::userId)
-                .filter(id -> !id.equals(joinerId))
+                .filter(id -> !id.equals(actorId))
                 .toList();
         if (notifyTargets.isEmpty()) {
             return;
         }
-        FlashPushEvent payload = FlashPushEvent.memberJoined(
-                flashId, joiner.userId(), joiner.nickname(), joiner.profileImage());
-        eventPublisher.publishEvent(new FlashBroadcastEvent(payload, notifyTargets));
+        eventPublisher.publishEvent(new FlashBroadcastEvent(payloadFor.apply(actor), notifyTargets));
     }
 
     @Transactional(readOnly = true)
@@ -247,16 +257,29 @@ public class FlashService {
         return buildRoomResponse(room);
     }
 
-    /** 모임방 장소 설정. 멤버만 가능. */
+    /**
+     * 모임방 장소 설정. 멤버만 가능.
+     * 정하거나 바꾸면 나머지 멤버에게 알린다. 같은 장소를 다시 고른 건 알리지 않는다.
+     */
     @Transactional
     public MeetupRoomResponse setPlace(Long userId, Long flashId, SetPlaceRequest request) {
         MeetupRoom room = requireRoom(flashId);
         checkMember(userId, room.getFlash());
+        String before = room.getPlaceName();
+        String beforeKakaoId = room.getPlaceKakaoId();
+        String after = request.placeName().strip();
         // 프록시라 select 없이 FK 만 채운다. 응답에 쓸 닉네임은 members 에서 찾는다.
-        room.setPlace(request.placeName().strip(), request.placeLat(), request.placeLng(),
+        room.setPlace(after, request.placeLat(), request.placeLng(),
                 request.kakaoPlaceId(), request.placeAddress(),
                 userRepository.getReferenceById(userId));
-        return buildRoomResponse(room);
+
+        MeetupRoomResponse res = buildRoomResponse(room);
+        boolean unchanged = after.equals(before) && Objects.equals(beforeKakaoId, request.kakaoPlaceId());
+        if (!unchanged) {
+            publishToOtherMembers(userId, res, setter -> FlashPushEvent.placeUpdated(
+                    flashId, setter.userId(), setter.nickname(), setter.profileImage(), before, after));
+        }
+        return res;
     }
 
     private MeetupRoom requireRoom(Long flashId) {
@@ -300,8 +323,15 @@ public class FlashService {
             throw new BadRequestException("하루 안의 시간만 정할 수 있어요.");
         }
 
+        LocalDateTime before = room.getMeetAt();
         room.setMeetAt(meetAt, userRepository.getReferenceById(userId));
-        return buildRoomResponse(room);
+
+        MeetupRoomResponse res = buildRoomResponse(room);
+        if (!meetAt.equals(before)) {
+            publishToOtherMembers(userId, res, setter -> FlashPushEvent.meetAtUpdated(
+                    flashId, setter.userId(), setter.nickname(), setter.profileImage(), before, meetAt));
+        }
+        return res;
     }
 
     /** 정한 사람은 항상 멤버이므로 members 에서 닉네임을 찾는다(추가 조회 없음). */

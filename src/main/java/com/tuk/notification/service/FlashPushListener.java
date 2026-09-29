@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -64,6 +65,23 @@ public class FlashPushListener {
                     "번개 합류",
                     event.nickname() + "님이 합류했어요",
                     data);
+            // 처음 정함과 바꿈을 구분한다. 바꿈은 이전 값을 보여줘야 "어, 바뀌었네"가 된다.
+            case PLACE_UPDATED -> event.placeBefore() == null
+                    ? new PushMessage("장소가 정해졌어요",
+                            event.placeAfter() + " · " + event.nickname() + "님이 정했어요", data)
+                    : new PushMessage("장소가 바뀌었어요",
+                            event.placeBefore() + " → " + event.placeAfter()
+                                    + " · " + event.nickname() + "님이 바꿨어요", data);
+            case MEET_AT_UPDATED -> {
+                LocalDateTime now = LocalDateTime.now();
+                yield event.meetAtBefore() == null
+                        ? new PushMessage("약속 시간이 정해졌어요",
+                                MeetTimeLabel.of(event.meetAtAfter(), now)
+                                        + " · " + event.nickname() + "님이 정했어요", data)
+                        : new PushMessage("약속 시간이 바뀌었어요",
+                                MeetTimeLabel.change(event.meetAtBefore(), event.meetAtAfter(), now)
+                                        + " · " + event.nickname() + "님이 바꿨어요", data);
+            }
         };
     }
 

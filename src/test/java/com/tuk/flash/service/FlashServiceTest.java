@@ -4,6 +4,8 @@ import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.FlashRecipient;
 import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
 import com.tuk.flash.domain.MeetupRoom;
+import com.tuk.flash.dto.FlashPushEvent;
+import com.tuk.flash.dto.FlashPushType;
 import com.tuk.flash.dto.FlashResponse;
 import com.tuk.flash.dto.MeetupRoomResponse;
 import com.tuk.flash.dto.SetMeetAtRequest;
@@ -23,6 +25,7 @@ import com.tuk.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -404,6 +407,121 @@ class FlashServiceTest {
                 .willReturn(List.of());
 
         assertThat(flashService.getSentFlashes(1L)).isEmpty();
+    }
+
+    // --- 장소·시간 정함/바꿈 알림 ---
+
+    @Test
+    @DisplayName("setPlace: 처음 정하면 정한 사람을 뺀 멤버에게 PLACE_UPDATED(이전 값 없음)")
+    void setPlaceFirstTimeNotifiesOthers() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        givenJoined(flash, user(2L, "합류자"));
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대입구역"));
+
+        FlashBroadcastEvent event = publishedEvent();
+        assertThat(event.targetUserIds()).containsExactly(2L);
+        assertThat(event.payload().type()).isEqualTo(FlashPushType.PLACE_UPDATED);
+        assertThat(event.payload().nickname()).isEqualTo("보낸이");
+        assertThat(event.payload().placeBefore()).isNull();
+        assertThat(event.payload().placeAfter()).isEqualTo("홍대입구역");
+    }
+
+    @Test
+    @DisplayName("setPlace: 바꾸면 이전 장소를 함께 보낸다")
+    void setPlaceChangeCarriesBefore() {
+        User sender = user(1L, "보낸이");
+        User joiner = user(2L, "합류자");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        room.setPlace("홍대입구역", null, null, null, null, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        FlashRecipient joined = givenJoined(flash, joiner);
+        given(flashRecipientRepository.findByFlashIdAndUserId(10L, 2L)).willReturn(Optional.of(joined));
+        given(userRepository.getReferenceById(2L)).willReturn(joiner);
+
+        flashService.setPlace(2L, 10L, new SetPlaceRequest("합정역"));
+
+        FlashBroadcastEvent event = publishedEvent();
+        assertThat(event.targetUserIds()).containsExactly(1L); // 바꾼 사람(2)은 빠진다
+        assertThat(event.payload().placeBefore()).isEqualTo("홍대입구역");
+        assertThat(event.payload().placeAfter()).isEqualTo("합정역");
+    }
+
+    @Test
+    @DisplayName("setPlace: 같은 장소를 다시 고르면 알리지 않는다")
+    void setSamePlaceIsSilent() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        room.setPlace("스타벅스 강남R점", 37.49, 127.02, "35026031", "서울 강남구", sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        givenJoined(flash, user(2L, "합류자"));
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        flashService.setPlace(1L, 10L, new SetPlaceRequest(
+                " 스타벅스 강남R점 ", 37.49, 127.02, "35026031", "서울 강남구"));
+
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 처음 정함 → 이전 값 없음, 바꿈 → 이전 값 포함, 같은 시간 → 알리지 않음")
+    void setMeetAtNotifications() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        givenJoined(flash, user(2L, "합류자"));
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+        LocalDateTime seven = LocalDateTime.now().plusHours(2).withSecond(0).withNano(0);
+        LocalDateTime eight = seven.plusHours(1);
+
+        flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(seven));
+        flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(eight));
+        flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(eight)); // 같은 값 — 조용히
+
+        ArgumentCaptor<FlashBroadcastEvent> captor = ArgumentCaptor.forClass(FlashBroadcastEvent.class);
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+        FlashPushEvent first = captor.getAllValues().get(0).payload();
+        FlashPushEvent change = captor.getAllValues().get(1).payload();
+        assertThat(first.type()).isEqualTo(FlashPushType.MEET_AT_UPDATED);
+        assertThat(first.meetAtBefore()).isNull();
+        assertThat(first.meetAtAfter()).isEqualTo(seven);
+        assertThat(change.meetAtBefore()).isEqualTo(seven);
+        assertThat(change.meetAtAfter()).isEqualTo(eight);
+        assertThat(captor.getAllValues().get(1).targetUserIds()).containsExactly(2L);
+    }
+
+    @Test
+    @DisplayName("setMeetAt: 혼자 있는 방이면 알릴 사람이 없다")
+    void setMeetAtAloneIsSilent() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        given(flashRecipientRepository.findByFlashIdAndStatus(10L, RecipientStatus.JOINED)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(LocalDateTime.now().plusHours(1)));
+
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    private FlashRecipient givenJoined(Flash flash, User member) {
+        FlashRecipient r = FlashRecipient.builder().flash(flash).user(member).build();
+        r.join();
+        given(flashRecipientRepository.findByFlashIdAndStatus(flash.getId(), RecipientStatus.JOINED))
+                .willReturn(List.of(r));
+        return r;
+    }
+
+    private FlashBroadcastEvent publishedEvent() {
+        ArgumentCaptor<FlashBroadcastEvent> captor = ArgumentCaptor.forClass(FlashBroadcastEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        return captor.getValue();
     }
 
     // --- helpers ---

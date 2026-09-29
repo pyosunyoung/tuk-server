@@ -144,7 +144,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   (만료돼도 방은 지워지지 않고 `status: CLOSED` 가 될 뿐이라, 링크로는 계속 열린다)
 - 약속 시간 범위: **과거 1시간 ~ 미래 24시간**. 벗어나면 400.
 - 합류 권한: 초대받은(수신 레코드 있는) 사람만. 아니면 403.
-- **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`) push(§2).
+- **실시간**: `/user/queue/flash` 구독 시 새 번개(`NEW_FLASH`)·누가 합류(`MEMBER_JOINED`)·장소/시간 정함·바꿈(`PLACE_UPDATED`/`MEET_AT_UPDATED`) push(§2).
 
 ---
 
@@ -171,7 +171,11 @@ CONNECT 헤더:  Authorization: Bearer <accessToken>   (필수 — 없으면 연
 { "type":"NEW_FLASH", "flashId":85, "userId":340, "nickname":"철수", "profileImage":null,
   "activity":"MEAL", "message":"밥ㄱㄱ", "scheduledAt":null, "expiresAt":"2026-07-23T20:42:02" }
 ```
-`type`: `NEW_FLASH`(새 번개 도착 — `userId`=보낸이) | `MEMBER_JOINED`(누가 합류 — `userId`=합류자, activity/message 등 null).
+`type`: `NEW_FLASH`(새 번개 도착 — `userId`=보낸이) | `MEMBER_JOINED`(누가 합류 — `userId`=합류자, activity/message 등 null)
+| `PLACE_UPDATED`(장소 정함/바꿈 — `userId`=정한 사람, `placeBefore`(처음이면 null)·`placeAfter`)
+| `MEET_AT_UPDATED`(약속 시간 정함/바꿈 — `userId`=정한 사람, `meetAtBefore`(처음이면 null)·`meetAtAfter`).
+- 장소/시간 이벤트는 **정한 사람을 뺀 멤버**에게만 간다. 같은 값으로 다시 저장하면 보내지 않는다.
+- 미접속 멤버에겐 같은 내용이 FCM 으로 간다(`data.type` 동일, `data.flashId`). 제목이 "정해졌어요"/"바뀌었어요"로 갈리고, 바꿈은 `이전 → 이후` 를 보여준다.
 
 ---
 
