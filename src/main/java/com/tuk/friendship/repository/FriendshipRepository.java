@@ -3,6 +3,7 @@ package com.tuk.friendship.repository;
 import com.tuk.friendship.domain.Friendship;
 import com.tuk.friendship.domain.Friendship.FriendshipStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -10,6 +11,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
+
+    /** 탈퇴자가 낀 친구 관계·신청 전부(보낸 쪽이든 받은 쪽이든). 상대 목록에서 조용히 사라진다. */
+    @Modifying
+    @Query("delete from Friendship f where f.requester.id = :userId or f.addressee.id = :userId")
+    int deleteAllInvolving(@Param("userId") Long userId);
 
     /** 두 사용자 사이의 관계(방향 무관). 친구 신청 중복 방지·재검증에 사용. */
     @Query("""

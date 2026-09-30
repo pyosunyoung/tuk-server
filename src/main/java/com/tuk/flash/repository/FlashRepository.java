@@ -3,6 +3,7 @@ package com.tuk.flash.repository;
 import com.tuk.flash.domain.Flash;
 import com.tuk.flash.domain.Flash.FlashStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +43,9 @@ public interface FlashRepository extends JpaRepository<Flash, Long> {
                                       @Param("status") FlashStatus status,
                                       @Param("now") LocalDateTime now,
                                       @Param("unscheduledCutoff") LocalDateTime unscheduledCutoff);
+
+    /** 탈퇴자가 띄운 툭. 딸린 초대·모임방을 먼저 지운 뒤 부른다(AccountDeletionService). */
+    @Modifying
+    @Query("delete from Flash f where f.sender.id = :userId")
+    int deleteBySenderId(@Param("userId") Long userId);
 }

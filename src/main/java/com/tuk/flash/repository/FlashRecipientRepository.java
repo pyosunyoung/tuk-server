@@ -5,6 +5,7 @@ import com.tuk.flash.domain.FlashRecipient;
 import com.tuk.flash.domain.FlashRecipient.RecipientStatus;
 import com.tuk.flash.domain.MeetupLifecycle;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -61,6 +62,18 @@ public interface FlashRecipientRepository extends JpaRepository<FlashRecipient, 
      * 그걸 근거로 PENDING 까지 남기면 **합류도 못 하는 죽은 초대가 목록에 계속 뜬다**
      * ("합류하기"를 눌러도 400). 실제로 그랬다.
      */
+    // ── 탈퇴 (AccountDeletionService) ──
+
+    /** 탈퇴자가 받은 초대·합류 기록. 남의 모임방 멤버 목록에서 빠진다. */
+    @Modifying
+    @Query("delete from FlashRecipient fr where fr.user.id = :userId")
+    int deleteByUserId(@Param("userId") Long userId);
+
+    /** 탈퇴자가 띄운 툭에 딸린 초대 기록(툭을 지우기 전에). */
+    @Modifying
+    @Query("delete from FlashRecipient fr where fr.flash.id in (select f.id from Flash f where f.sender.id = :userId)")
+    int deleteByFlashSender(@Param("userId") Long userId);
+
     default List<FlashRecipient> findActiveReceived(Long userId, LocalDateTime now) {
         return findReceived(userId, FlashStatus.ACTIVE, now, MeetupLifecycle.unscheduledCutoff(now));
     }

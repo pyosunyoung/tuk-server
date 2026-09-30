@@ -58,6 +58,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 동작 | API | 요청 |
 |---|---|---|
 | **내 정보 조회** | `GET /api/users/me` | (body 없음) → `{ userId, nickname, profileImage }` |
+| **탈퇴** | `DELETE /api/users/me` | (body 없음) → `204`. 내가 띄운 툭·모임방, 받은 초대·합류, 친구 관계, 기기 토큰, 한가함 상태, refresh 토큰 삭제. 남의 모임방은 남기고 "정한 사람"만 비움. 카카오 연결 끊기는 앱이 SDK 로. 되돌릴 수 없음 |
 | FCM 기기토큰 등록 | `POST /api/device-tokens` | `{ "token":"<FCM 토큰>", "platform":"ANDROID" }` |
 | 로그아웃 시 토큰 해제 | `DELETE /api/device-tokens` | `{ "token":"<FCM 토큰>" }` |
 | 로그아웃 | `POST /api/auth/logout` | (body 없음) |

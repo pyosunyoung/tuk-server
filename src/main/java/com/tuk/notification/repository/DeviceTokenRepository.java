@@ -2,6 +2,9 @@ package com.tuk.notification.repository;
 
 import com.tuk.notification.domain.DeviceToken;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,4 +23,9 @@ public interface DeviceTokenRepository extends JpaRepository<DeviceToken, Long> 
 
     /** FCM 이 NotRegistered 를 응답한 죽은 토큰 정리. */
     void deleteByToken(String token);
+
+    /** 탈퇴 — 그 사용자의 모든 기기 토큰. 탈퇴한 기기로 남의 알림이 가면 안 된다. */
+    @Modifying
+    @Query("delete from DeviceToken d where d.user.id = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
 }
