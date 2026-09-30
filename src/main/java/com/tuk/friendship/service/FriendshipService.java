@@ -35,12 +35,14 @@ public class FriendshipService {
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final InviteCodeAttemptLimiter attemptLimiter;
 
     public FriendshipService(FriendshipRepository friendshipRepository, UserRepository userRepository,
-                             ApplicationEventPublisher eventPublisher) {
+                             ApplicationEventPublisher eventPublisher, InviteCodeAttemptLimiter attemptLimiter) {
         this.friendshipRepository = friendshipRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.attemptLimiter = attemptLimiter;
     }
 
     /**
@@ -162,8 +164,13 @@ public class FriendshipService {
         if (code.isEmpty()) {
             throw new BadRequestException("초대코드를 입력해주세요.");
         }
-        User target = userRepository.findByInviteCode(code)
-                .orElseThrow(() -> new NotFoundException("유효하지 않은 초대코드입니다."));
+        // 무작위 대입 방지 — 틀린 코드만 센다(InviteCodeAttemptLimiter)
+        attemptLimiter.checkAllowed(userId);
+        User target = userRepository.findByInviteCode(code).orElse(null);
+        if (target == null) {
+            attemptLimiter.recordFailure(userId);
+            throw new NotFoundException("유효하지 않은 초대코드입니다.");
+        }
         if (target.getId().equals(userId)) {
             throw new BadRequestException("본인의 초대코드입니다.");
         }

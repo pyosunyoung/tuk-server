@@ -8,6 +8,7 @@ import com.tuk.friendship.repository.FriendshipRepository;
 import com.tuk.global.exception.BadRequestException;
 import com.tuk.global.exception.ForbiddenException;
 import com.tuk.global.exception.NotFoundException;
+import com.tuk.global.exception.TooManyRequestsException;
 import com.tuk.user.domain.User;
 import com.tuk.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -37,6 +39,7 @@ class FriendshipServiceTest {
     @Mock FriendshipRepository friendshipRepository;
     @Mock UserRepository userRepository;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock InviteCodeAttemptLimiter attemptLimiter;
     @InjectMocks FriendshipService friendshipService;
 
     @Test
@@ -198,12 +201,23 @@ class FriendshipServiceTest {
     }
 
     @Test
-    @DisplayName("redeemInviteCode: 없는 코드면 404")
+    @DisplayName("redeemInviteCode: 없는 코드면 404 + 실패 횟수를 센다")
     void redeemUnknownCode() {
         given(userRepository.findByInviteCode("ZZZZZZZZ")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "zzzzzzzz"))
                 .isInstanceOf(NotFoundException.class);
+        verify(attemptLimiter).recordFailure(1L);
+    }
+
+    @Test
+    @DisplayName("redeemInviteCode: 이미 너무 많이 틀렸으면 코드를 조회하지도 않고 429")
+    void redeemBlockedAfterTooManyFailures() {
+        willThrow(new TooManyRequestsException("잠시 후")).given(attemptLimiter).checkAllowed(1L);
+
+        assertThatThrownBy(() -> friendshipService.redeemInviteCode(1L, "ab3k9xq2"))
+                .isInstanceOf(TooManyRequestsException.class);
+        verify(userRepository, never()).findByInviteCode(anyString());
     }
 
     @Test
