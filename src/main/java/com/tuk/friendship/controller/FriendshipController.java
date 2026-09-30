@@ -9,8 +9,11 @@ import com.tuk.friendship.dto.RedeemInviteRequest;
 import com.tuk.friendship.dto.SendFriendRequest;
 import com.tuk.friendship.service.FriendshipService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,6 +44,22 @@ public class FriendshipController {
     public void accept(@AuthenticationPrincipal Long userId,
                        @PathVariable Long friendshipId) {
         friendshipService.accept(userId, friendshipId);
+    }
+
+    /** 친구 끊기. 양쪽 목록에서 조용히 사라진다(알림 없음). */
+    @DeleteMapping("/friends/{friendUserId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unfriend(@AuthenticationPrincipal Long userId,
+                         @PathVariable Long friendUserId) {
+        friendshipService.unfriend(userId, friendUserId);
+    }
+
+    /** 내가 보낸 신청 취소. 받은 신청을 거절하는 API 는 없다(거절 안 보임). */
+    @DeleteMapping("/requests/{friendshipId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancelRequest(@AuthenticationPrincipal Long userId,
+                              @PathVariable Long friendshipId) {
+        friendshipService.cancelRequest(userId, friendshipId);
     }
 
     /** 내가 받은 수락 대기 신청 목록. */

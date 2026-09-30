@@ -317,6 +317,58 @@ class FriendshipServiceTest {
         verify(eventPublisher, never()).publishEvent(any(FriendshipEvent.class));
     }
 
+    // --- 친구 끊기 / 보낸 신청 취소 ---
+
+    @Test
+    @DisplayName("unfriend: 친구면 관계를 지우고, 알림은 보내지 않는다")
+    void unfriendDeletesSilently() {
+        Friendship accepted = Friendship.builder().requester(user(2L)).addressee(user(1L)).build();
+        accepted.accept();
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(accepted));
+
+        friendshipService.unfriend(1L, 2L); // 방향 무관 — 상대가 먼저 신청했던 관계도 끊을 수 있다
+
+        verify(friendshipRepository).delete(accepted);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("unfriend: 아직 신청 단계(PENDING)거나 관계가 없으면 404 — 신청 취소와 섞지 않는다")
+    void unfriendRequiresAccepted() {
+        Friendship pending = Friendship.builder().requester(user(1L)).addressee(user(2L)).build();
+        given(friendshipRepository.findBetween(1L, 2L)).willReturn(Optional.of(pending));
+        given(friendshipRepository.findBetween(1L, 3L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> friendshipService.unfriend(1L, 2L)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> friendshipService.unfriend(1L, 3L)).isInstanceOf(NotFoundException.class);
+        verify(friendshipRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("cancelRequest: 내가 보낸 PENDING 신청은 취소된다")
+    void cancelOwnPendingRequest() {
+        Friendship mine = withId(Friendship.builder().requester(user(1L)).addressee(user(2L)).build(), 50L);
+        given(friendshipRepository.findById(50L)).willReturn(Optional.of(mine));
+
+        friendshipService.cancelRequest(1L, 50L);
+
+        verify(friendshipRepository).delete(mine);
+    }
+
+    @Test
+    @DisplayName("cancelRequest: 받은 신청은 지울 수 없다(거절이 드러나므로), 이미 친구면 400")
+    void cannotRejectOrCancelAccepted() {
+        Friendship received = withId(Friendship.builder().requester(user(2L)).addressee(user(1L)).build(), 51L);
+        given(friendshipRepository.findById(51L)).willReturn(Optional.of(received));
+        Friendship accepted = withId(Friendship.builder().requester(user(1L)).addressee(user(3L)).build(), 52L);
+        accepted.accept();
+        given(friendshipRepository.findById(52L)).willReturn(Optional.of(accepted));
+
+        assertThatThrownBy(() -> friendshipService.cancelRequest(1L, 51L)).isInstanceOf(ForbiddenException.class);
+        assertThatThrownBy(() -> friendshipService.cancelRequest(1L, 52L)).isInstanceOf(BadRequestException.class);
+        verify(friendshipRepository, never()).delete(any());
+    }
+
     private static User user(Long id) {
         User u = User.builder().nickname("u" + id).provider("kakao").providerId("pid" + id).build();
         ReflectionTestUtils.setField(u, "id", id);

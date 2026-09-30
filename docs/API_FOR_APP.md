@@ -86,6 +86,8 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 친구 신청 | `POST /api/friendships` | `{ "addresseeId": 341 }` | `{ friendshipId, status }` (status=`PENDING`, 상대가 이미 나에게 신청했으면 `ACCEPTED`) |
 | 신청 수락 | `POST /api/friendships/{friendshipId}/accept` | — | 200 (body 없음) |
 | 내 초대코드 | `GET /api/friendships/invite-code` | — | `{ code }` (없으면 생성해서 반환. 8자, 혼동문자 제외) |
+| 친구 끊기 | `DELETE /api/friendships/friends/{friendUserId}` | (body 없음) | `204`. 양쪽 목록에서 사라짐, 알림 없음. 친구가 아니면 404 |
+| 보낸 신청 취소 | `DELETE /api/friendships/requests/{friendshipId}` | (body 없음) | `204`. 내가 보낸 PENDING 만. 받은 신청은 403(거절 API 는 만들지 않는다 — 상대 "보낸 신청"에서 사라져 거절이 드러남) |
 | 코드로 친구맺기 | `POST /api/friendships/redeem` | `{ "code": "AB3K9XQ2" }` | `{ friendshipId, status }` (`POST /friendships` 와 동일 규칙) |
 
 - 거절 API는 **없음**(설계 원칙 "거절 안 보임"). 무시 = 그냥 두면 됨.

@@ -109,6 +109,39 @@ public class FriendshipService {
     }
 
     /**
+     * 친구 끊기. 관계를 지워 양쪽 목록에서 조용히 사라진다 — 상대에게 알림은 없다.
+     * 다시 친구가 되려면 초대 코드부터(한쪽만 숨기는 방식은 "보낸 툭이 계속 무응답"인
+     * 이상한 상태를 만들어서 택하지 않았다).
+     *
+     * 이미 합류한 모임은 그대로 둔다(약속이 잡혔을 수 있다). 아직 합류 전인 초대가 남는 건
+     * 알려진 한계 — 합류 시점에 친구 관계를 다시 보진 않는다.
+     */
+    @Transactional
+    public void unfriend(Long userId, Long friendUserId) {
+        Friendship friendship = friendshipRepository.findBetween(userId, friendUserId)
+                .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                .orElseThrow(() -> new NotFoundException("친구가 아니에요."));
+        friendshipRepository.delete(friendship);
+    }
+
+    /**
+     * 내가 보낸 신청 취소. 보낸 사람만 할 수 있다.
+     * 받은 신청을 지우는 "거절"은 만들지 않는다 — 상대의 "보낸 신청"에서 사라져 거절이 드러난다(원칙 1).
+     */
+    @Transactional
+    public void cancelRequest(Long userId, Long friendshipId) {
+        Friendship friendship = friendshipRepository.findById(friendshipId)
+                .orElseThrow(() -> new NotFoundException("이미 없는 신청이에요."));
+        if (!friendship.getRequester().getId().equals(userId)) {
+            throw new ForbiddenException("내가 보낸 신청만 취소할 수 있어요.");
+        }
+        if (friendship.getStatus() != FriendshipStatus.PENDING) {
+            throw new BadRequestException("이미 친구가 됐어요.");
+        }
+        friendshipRepository.delete(friendship);
+    }
+
+    /**
      * 푸시 문구에 쓸 닉네임. requester 는 getReferenceById 프록시라 바로 getNickname() 하면
      * 추가 쿼리가 숨어버린다 — 여기서 명시적으로 읽는다(커밋 후 lazy 로딩도 피한다).
      */
