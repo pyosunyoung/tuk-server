@@ -57,13 +57,14 @@ public class FlashPushListener {
                 "flashId", String.valueOf(event.flashId()));
 
         return switch (event.type()) {
+            // "번개"는 옛 코드네임이다. 사용자에게는 툭(명사)·던지다(동사)로만 말한다.
             case NEW_FLASH -> new PushMessage(
-                    event.nickname() + "님의 번개",
+                    event.nickname() + "님이 툭 던졌어요",
                     hasText(event.message()) ? event.message() : "지금 볼래?",
                     data);
             case MEMBER_JOINED -> new PushMessage(
-                    "번개 합류",
                     event.nickname() + "님이 합류했어요",
+                    "모임방에서 확인해 보세요",
                     data);
             // 처음 정함과 바꿈을 구분한다. 바꿈은 이전 값을 보여줘야 "어, 바뀌었네"가 된다.
             case PLACE_UPDATED -> event.placeBefore() == null

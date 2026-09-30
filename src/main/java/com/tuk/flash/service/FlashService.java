@@ -204,10 +204,10 @@ public class FlashService {
     @Transactional
     public MeetupRoomResponse join(Long userId, Long flashId) {
         FlashRecipient recipient = flashRecipientRepository.findByFlashIdAndUserId(flashId, userId)
-                .orElseThrow(() -> new ForbiddenException("초대받지 않은 번개입니다."));
+                .orElseThrow(() -> new ForbiddenException("초대받지 않은 툭이에요."));
 
         if (!recipient.getFlash().isActive()) {
-            throw new BadRequestException("이미 종료되었거나 만료된 번개입니다.");
+            throw new BadRequestException("합류 시간이 끝난 툭이에요.");
         }
         boolean firstJoin = !recipient.isJoined();
         if (firstJoin) {

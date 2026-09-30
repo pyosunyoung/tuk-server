@@ -63,7 +63,7 @@ class FlashPushListenerTest {
         ArgumentCaptor<PushMessage> captor = ArgumentCaptor.forClass(PushMessage.class);
         verify(pushNotificationService).pushToUsers(any(), captor.capture());
         PushMessage message = captor.getValue();
-        assertThat(message.title()).contains("철수");
+        assertThat(message.title()).isEqualTo("철수님이 툭 던졌어요");
         assertThat(message.body()).isEqualTo("밥먹자");
         assertThat(message.data()).containsEntry("flashId", "10").containsEntry("type", "NEW_FLASH");
     }
@@ -78,8 +78,26 @@ class FlashPushListenerTest {
 
         ArgumentCaptor<PushMessage> captor = ArgumentCaptor.forClass(PushMessage.class);
         verify(pushNotificationService).pushToUsers(any(), captor.capture());
-        assertThat(captor.getValue().body()).contains("영희");
+        assertThat(captor.getValue().title()).isEqualTo("영희님이 합류했어요");
         assertThat(captor.getValue().data()).containsEntry("type", "MEMBER_JOINED");
+    }
+
+    @Test
+    @DisplayName("사용자에게 보이는 푸시 문구에 옛 코드네임 '번개'가 없다")
+    void noLegacyCodename() {
+        given(sessionRegistry.isOnline(2L)).willReturn(false);
+        LocalDateTime at = LocalDateTime.now().plusHours(1);
+        List<FlashPushEvent> all = List.of(
+                newFlashPayload(),
+                FlashPushEvent.memberJoined(10L, 2L, "영희", null),
+                FlashPushEvent.placeUpdated(10L, 1L, "민수", null, null, "홍대입구역"),
+                FlashPushEvent.placeUpdated(10L, 1L, "민수", null, "홍대입구역", "합정역"),
+                FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, null, at),
+                FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, at, at.plusMinutes(30)));
+        for (FlashPushEvent e : all) {
+            PushMessage m = pushed(e);
+            assertThat(m.title() + m.body()).doesNotContain("번개");
+        }
     }
 
     @Test
