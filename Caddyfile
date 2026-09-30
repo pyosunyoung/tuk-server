@@ -27,6 +27,17 @@
 		rewrite * /app.html
 		file_server
 	}
+	# 이용약관·개인정보 처리방침 — 앱 랜딩의 약관 링크가 여기로 온다
+	handle /terms {
+		root * /srv/public
+		rewrite * /terms.html
+		file_server
+	}
+	handle /privacy {
+		root * /srv/public
+		rewrite * /privacy.html
+		file_server
+	}
 
 	# 나머지는 전부 뒤의 앱으로. WebSocket(STOMP) 업그레이드도 그대로 통과한다.
 	handle {
