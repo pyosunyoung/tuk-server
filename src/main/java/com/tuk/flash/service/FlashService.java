@@ -81,7 +81,7 @@ public class FlashService {
 
         List<Long> targets = resolveTargets(senderId, request.targetUserIds());
         if (targets.isEmpty()) {
-            throw new BadRequestException("보낼 절친 대상이 없습니다.");
+            throw new BadRequestException("툭을 받을 친구가 없어요.");
         }
 
         int durationMinutes = request.durationMinutes() != null ? request.durationMinutes() : DEFAULT_DURATION_MINUTES;
