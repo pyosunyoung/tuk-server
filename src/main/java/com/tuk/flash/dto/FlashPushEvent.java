@@ -36,20 +36,25 @@ public record FlashPushEvent(
                 activity, message, scheduledAt, expiresAt, null, null, null, null);
     }
 
-    public static FlashPushEvent memberJoined(Long flashId, Long joinedUserId, String nickname, String profileImage) {
+    // 합류·장소·시간 이벤트에도 activity 를 싣는다 — 모임이 여러 개면 알림만 보고 어느 모임인지 알아야 한다.
+
+    public static FlashPushEvent memberJoined(Long flashId, Activity activity,
+                                              Long joinedUserId, String nickname, String profileImage) {
         return new FlashPushEvent(FlashPushType.MEMBER_JOINED, flashId, joinedUserId, nickname, profileImage,
-                null, null, null, null, null, null, null, null);
+                activity, null, null, null, null, null, null, null);
     }
 
-    public static FlashPushEvent placeUpdated(Long flashId, Long setterId, String nickname, String profileImage,
+    public static FlashPushEvent placeUpdated(Long flashId, Activity activity,
+                                              Long setterId, String nickname, String profileImage,
                                               String before, String after) {
         return new FlashPushEvent(FlashPushType.PLACE_UPDATED, flashId, setterId, nickname, profileImage,
-                null, null, null, null, before, after, null, null);
+                activity, null, null, null, before, after, null, null);
     }
 
-    public static FlashPushEvent meetAtUpdated(Long flashId, Long setterId, String nickname, String profileImage,
+    public static FlashPushEvent meetAtUpdated(Long flashId, Activity activity,
+                                               Long setterId, String nickname, String profileImage,
                                                LocalDateTime before, LocalDateTime after) {
         return new FlashPushEvent(FlashPushType.MEET_AT_UPDATED, flashId, setterId, nickname, profileImage,
-                null, null, null, null, null, null, before, after);
+                activity, null, null, null, null, null, before, after);
     }
 }

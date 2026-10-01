@@ -60,6 +60,16 @@ public class MeetupRoom extends BaseTimeEntity {
     @JoinColumn(name = "meet_at_set_by")
     private User meetAtSetBy;
 
+    /**
+     * 장소·약속 시간을 마지막으로 정한 동작이 "바꿈"이었나(처음 정함이면 false).
+     * 방의 "OO님이 정했어요 / 바꿨어요"가 알림과 같은 말을 하게 한다.
+     */
+    @Column(nullable = false)
+    private boolean placeChanged;
+
+    @Column(nullable = false)
+    private boolean meetAtChanged;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RoomStatus status;
@@ -80,6 +90,7 @@ public class MeetupRoom extends BaseTimeEntity {
      */
     public void setPlace(String placeName, Double placeLat, Double placeLng,
                          String placeKakaoId, String placeAddress, User setter) {
+        this.placeChanged = this.placeName != null; // 같은 값 재저장은 서비스가 미리 걸러낸다
         this.placeName = placeName;
         this.placeLat = placeLat;
         this.placeLng = placeLng;
@@ -90,6 +101,7 @@ public class MeetupRoom extends BaseTimeEntity {
 
     /** 약속 시간을 정한다(다시 정하면 마지막 사람으로 덮인다). */
     public void setMeetAt(LocalDateTime meetAt, User setter) {
+        this.meetAtChanged = this.meetAt != null;
         this.meetAt = meetAt;
         this.meetAtSetBy = setter;
     }

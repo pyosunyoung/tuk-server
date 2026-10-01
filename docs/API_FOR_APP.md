@@ -124,8 +124,8 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   "roomId": 20, "flashId": 85, "activity": "MEAL",
   "placeName": null, "placeLat": null, "placeLng": null,
   "placeKakaoId": null, "placeAddress": null,
-  "placeSetById": null, "placeSetByNickname": null,
-  "meetAt": null, "meetAtSetById": null, "meetAtSetByNickname": null,
+  "placeSetById": null, "placeSetByNickname": null, "placeChanged": false,
+  "meetAt": null, "meetAtSetById": null, "meetAtSetByNickname": null, "meetAtChanged": false,
   "status": "OPEN",
   "expiresAt": "2026-09-22T21:30:00",
   "members": [
@@ -139,6 +139,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
   장소는 멤버 누구나 다시 정할 수 있고, **마지막으로 바꾼 사람**으로 덮인다.
   (`placeSetById == 내 userId` 면 "내가 정했어요")
 - `placeKakaoId`/`placeAddress` = **검색으로 고른 장소**일 때만 값이 있다(직접 입력이면 둘 다 null).
+- `placeChanged`/`meetAtChanged` = 마지막 동작이 "바꿈"이었나(처음 정함이면 false). 화면의 "OO님이 정했어요/바꿨어요"에 쓴다. 같은 값으로 다시 저장하면 아무것도 바뀌지 않는다(정한 사람도 그대로, 알림 없음).
 - `meetAt` = **만나기로 한 시각**(아직 안 정했으면 null). `meetAtSetById`/`Nickname` 은 마지막으로 정한 멤버 —
   장소와 같이 **멤버 아무나** 정하고 아무나 바꾼다.
 - `expiresAt` = **모집 마감 시각**(언제까지 합류할 수 있나). 목록을 거치지 않고
@@ -178,6 +179,7 @@ CONNECT 헤더:  Authorization: Bearer <accessToken>   (필수 — 없으면 연
 `type`: `NEW_FLASH`(새 번개 도착 — `userId`=보낸이) | `MEMBER_JOINED`(누가 합류 — `userId`=합류자, activity/message 등 null)
 | `PLACE_UPDATED`(장소 정함/바꿈 — `userId`=정한 사람, `placeBefore`(처음이면 null)·`placeAfter`)
 | `MEET_AT_UPDATED`(약속 시간 정함/바꿈 — `userId`=정한 사람, `meetAtBefore`(처음이면 null)·`meetAtAfter`).
+- 합류·장소·시간 이벤트에도 `activity` 가 실린다(어느 모임인지). 푸시 제목은 "밥 · 장소가 바뀌었어요"처럼 활동이 앞에 붙는다.
 - 장소/시간 이벤트는 **정한 사람을 뺀 멤버**에게만 간다. 같은 값으로 다시 저장하면 보내지 않는다.
 - 미접속 멤버에겐 같은 내용이 FCM 으로 간다(`data.type` 동일, `data.flashId`). 제목이 "정해졌어요"/"바뀌었어요"로 갈리고, 바꿈은 `이전 → 이후` 를 보여준다.
 

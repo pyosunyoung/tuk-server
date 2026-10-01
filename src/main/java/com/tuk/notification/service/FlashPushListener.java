@@ -56,30 +56,34 @@ public class FlashPushListener {
                 "type", event.type().name(),
                 "flashId", String.valueOf(event.flashId()));
 
+        // 어느 모임인지 앞에 붙인다("밥 · 장소가 바뀌었어요"). 모임이 여러 개면 알림만 보고 구분해야 한다.
+        String which = ActivityLabel.prefix(event.activity());
+
         return switch (event.type()) {
             // "번개"는 옛 코드네임이다. 사용자에게는 툭(명사)·던지다(동사)로만 말한다.
+            // 새 툭은 제목에 보낸 사람이 있어 활동은 본문 앞에 둔다.
             case NEW_FLASH -> new PushMessage(
                     event.nickname() + "님이 툭 던졌어요",
-                    hasText(event.message()) ? event.message() : "지금 볼래?",
+                    which + (hasText(event.message()) ? event.message() : "지금 볼래?"),
                     data);
             case MEMBER_JOINED -> new PushMessage(
-                    event.nickname() + "님이 합류했어요",
+                    which + event.nickname() + "님이 합류했어요",
                     "모임방에서 확인해 보세요",
                     data);
             // 처음 정함과 바꿈을 구분한다. 바꿈은 이전 값을 보여줘야 "어, 바뀌었네"가 된다.
             case PLACE_UPDATED -> event.placeBefore() == null
-                    ? new PushMessage("장소가 정해졌어요",
+                    ? new PushMessage(which + "장소가 정해졌어요",
                             event.placeAfter() + " · " + event.nickname() + "님이 정했어요", data)
-                    : new PushMessage("장소가 바뀌었어요",
+                    : new PushMessage(which + "장소가 바뀌었어요",
                             event.placeBefore() + " → " + event.placeAfter()
                                     + " · " + event.nickname() + "님이 바꿨어요", data);
             case MEET_AT_UPDATED -> {
                 LocalDateTime now = LocalDateTime.now();
                 yield event.meetAtBefore() == null
-                        ? new PushMessage("약속 시간이 정해졌어요",
+                        ? new PushMessage(which + "약속 시간이 정해졌어요",
                                 MeetTimeLabel.of(event.meetAtAfter(), now)
                                         + " · " + event.nickname() + "님이 정했어요", data)
-                        : new PushMessage("약속 시간이 바뀌었어요",
+                        : new PushMessage(which + "약속 시간이 바뀌었어요",
                                 MeetTimeLabel.change(event.meetAtBefore(), event.meetAtAfter(), now)
                                         + " · " + event.nickname() + "님이 바꿨어요", data);
             }

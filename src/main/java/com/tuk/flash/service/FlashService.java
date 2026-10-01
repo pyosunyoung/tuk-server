@@ -224,7 +224,7 @@ public class FlashService {
 
     private void publishMemberJoined(Long joinerId, Long flashId, MeetupRoomResponse room) {
         publishToOtherMembers(joinerId, room, joiner -> FlashPushEvent.memberJoined(
-                flashId, joiner.userId(), joiner.nickname(), joiner.profileImage()));
+                flashId, room.activity(), joiner.userId(), joiner.nickname(), joiner.profileImage()));
     }
 
     /**
@@ -266,19 +266,20 @@ public class FlashService {
         MeetupRoom room = requireRoom(flashId);
         checkMember(userId, room.getFlash());
         String before = room.getPlaceName();
-        String beforeKakaoId = room.getPlaceKakaoId();
         String after = request.placeName().strip();
+        // 같은 장소를 다시 고르면 아무것도 바꾸지 않는다 — "정한 사람"이 엉뚱하게 바뀌거나
+        // "바꿨어요"로 보이지 않게, 알림도 없이.
+        if (after.equals(before) && Objects.equals(room.getPlaceKakaoId(), request.kakaoPlaceId())) {
+            return buildRoomResponse(room);
+        }
         // 프록시라 select 없이 FK 만 채운다. 응답에 쓸 닉네임은 members 에서 찾는다.
         room.setPlace(after, request.placeLat(), request.placeLng(),
                 request.kakaoPlaceId(), request.placeAddress(),
                 userRepository.getReferenceById(userId));
 
         MeetupRoomResponse res = buildRoomResponse(room);
-        boolean unchanged = after.equals(before) && Objects.equals(beforeKakaoId, request.kakaoPlaceId());
-        if (!unchanged) {
-            publishToOtherMembers(userId, res, setter -> FlashPushEvent.placeUpdated(
-                    flashId, setter.userId(), setter.nickname(), setter.profileImage(), before, after));
-        }
+        publishToOtherMembers(userId, res, setter -> FlashPushEvent.placeUpdated(
+                flashId, res.activity(), setter.userId(), setter.nickname(), setter.profileImage(), before, after));
         return res;
     }
 
@@ -324,13 +325,16 @@ public class FlashService {
         }
 
         LocalDateTime before = room.getMeetAt();
+        // 같은 시간을 다시 고르면 아무것도 바꾸지 않는다 — "정한 사람"이 엉뚱하게 바뀌거나
+        // "바꿨어요"로 보이지 않게, 알림도 없이.
+        if (meetAt.equals(before)) {
+            return buildRoomResponse(room);
+        }
         room.setMeetAt(meetAt, userRepository.getReferenceById(userId));
 
         MeetupRoomResponse res = buildRoomResponse(room);
-        if (!meetAt.equals(before)) {
-            publishToOtherMembers(userId, res, setter -> FlashPushEvent.meetAtUpdated(
-                    flashId, setter.userId(), setter.nickname(), setter.profileImage(), before, meetAt));
-        }
+        publishToOtherMembers(userId, res, setter -> FlashPushEvent.meetAtUpdated(
+                flashId, res.activity(), setter.userId(), setter.nickname(), setter.profileImage(), before, meetAt));
         return res;
     }
 
@@ -374,9 +378,11 @@ public class FlashService {
                 room.getPlaceAddress(),
                 placeSetById,
                 placeSetByNickname,
+                room.isPlaceChanged(),
                 room.getMeetAt(),
                 meetAtSetById,
                 meetAtSetByNickname,
+                room.isMeetAtChanged(),
                 room.getStatus().name(),
                 room.getExpiresAt(),
                 members);

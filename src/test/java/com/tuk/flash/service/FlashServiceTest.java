@@ -460,7 +460,7 @@ class FlashServiceTest {
         room.setPlace("스타벅스 강남R점", 37.49, 127.02, "35026031", "서울 강남구", sender);
         given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
         givenJoined(flash, user(2L, "합류자"));
-        given(userRepository.getReferenceById(1L)).willReturn(sender);
+        // 같은 값이면 방을 건드리지도 않으므로 정한 사람 참조도 만들지 않는다
 
         flashService.setPlace(1L, 10L, new SetPlaceRequest(
                 " 스타벅스 강남R점 ", 37.49, 127.02, "35026031", "서울 강남구"));
@@ -508,6 +508,64 @@ class FlashServiceTest {
         flashService.setMeetAt(1L, 10L, new SetMeetAtRequest(LocalDateTime.now().plusHours(1)));
 
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("setPlace: 처음 정함은 changed=false, 바꾸면 true — 방의 '정했어요/바꿨어요'가 알림과 같은 말을 한다")
+    void placeChangedFlag() {
+        User sender = user(1L, "보낸이");
+        User joiner = user(2L, "합류자");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        FlashRecipient joined = givenJoined(flash, joiner);
+        given(flashRecipientRepository.findByFlashIdAndUserId(10L, 2L)).willReturn(Optional.of(joined));
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+        given(userRepository.getReferenceById(2L)).willReturn(joiner);
+
+        MeetupRoomResponse first = flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대입구역"));
+        assertThat(first.placeChanged()).isFalse();
+
+        MeetupRoomResponse changed = flashService.setPlace(2L, 10L, new SetPlaceRequest("합정역"));
+        assertThat(changed.placeChanged()).isTrue();
+        assertThat(changed.placeSetByNickname()).isEqualTo("합류자");
+    }
+
+    @Test
+    @DisplayName("같은 값을 다시 저장하면 아무것도 안 바뀐다 — 정한 사람이 덮이지 않고 '바꿨어요'도 안 된다")
+    void sameValueIsNoOp() {
+        User sender = user(1L, "보낸이");
+        User joiner = user(2L, "합류자");
+        Flash flash = flash(10L, sender);
+        MeetupRoom room = room(20L, flash);
+        LocalDateTime at = LocalDateTime.now().plusHours(2).withSecond(0).withNano(0);
+        room.setPlace("홍대입구역", null, null, null, null, sender);
+        room.setMeetAt(at, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room));
+        FlashRecipient joined = givenJoined(flash, joiner);
+        given(flashRecipientRepository.findByFlashIdAndUserId(10L, 2L)).willReturn(Optional.of(joined));
+
+        MeetupRoomResponse place = flashService.setPlace(2L, 10L, new SetPlaceRequest("홍대입구역"));
+        MeetupRoomResponse time = flashService.setMeetAt(2L, 10L, new SetMeetAtRequest(at));
+
+        assertThat(place.placeSetByNickname()).isEqualTo("보낸이");
+        assertThat(place.placeChanged()).isFalse();
+        assertThat(time.meetAtSetByNickname()).isEqualTo("보낸이");
+        assertThat(time.meetAtChanged()).isFalse();
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("장소·시간·합류 알림에 모임 종류(activity)가 실린다 — 알림만 보고 어느 모임인지 알게")
+    void eventsCarryActivity() {
+        User sender = user(1L, "보낸이");
+        Flash flash = flash(10L, sender);
+        given(meetupRoomRepository.findByFlashId(10L)).willReturn(Optional.of(room(20L, flash)));
+        givenJoined(flash, user(2L, "합류자"));
+        given(userRepository.getReferenceById(1L)).willReturn(sender);
+
+        flashService.setPlace(1L, 10L, new SetPlaceRequest("홍대입구역"));
+
+        assertThat(publishedEvent().payload().activity()).isEqualTo(Activity.MEAL);
     }
 
     private FlashRecipient givenJoined(Flash flash, User member) {

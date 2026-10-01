@@ -24,9 +24,11 @@ public record MeetupRoomResponse(
         String placeAddress,
         Long placeSetById,
         String placeSetByNickname,
+        boolean placeChanged,
         LocalDateTime meetAt,
         Long meetAtSetById,
         String meetAtSetByNickname,
+        boolean meetAtChanged,
         String status,
         LocalDateTime expiresAt,
         List<MemberResponse> members

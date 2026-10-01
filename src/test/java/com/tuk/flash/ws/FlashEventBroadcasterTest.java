@@ -45,7 +45,7 @@ class FlashEventBroadcasterTest {
     @Test
     @DisplayName("onFlashBroadcast: 한 대상 전송이 실패해도 다른 대상 전송은 계속(격리)")
     void isolatesFailure() {
-        FlashPushEvent payload = FlashPushEvent.memberJoined(10L, 2L, "합류자", null);
+        FlashPushEvent payload = FlashPushEvent.memberJoined(10L, null, 2L, "합류자", null);
         given(sessionRegistry.isOnline(3L)).willReturn(true);
         given(sessionRegistry.isOnline(4L)).willReturn(true);
         // 3번 전송에서 예외

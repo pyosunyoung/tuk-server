@@ -64,7 +64,7 @@ class FlashPushListenerTest {
         verify(pushNotificationService).pushToUsers(any(), captor.capture());
         PushMessage message = captor.getValue();
         assertThat(message.title()).isEqualTo("철수님이 툭 던졌어요");
-        assertThat(message.body()).isEqualTo("밥먹자");
+        assertThat(message.body()).isEqualTo("밥 · 밥먹자"); // 어느 모임인지 본문 앞에
         assertThat(message.data()).containsEntry("flashId", "10").containsEntry("type", "NEW_FLASH");
     }
 
@@ -74,11 +74,11 @@ class FlashPushListenerTest {
         given(sessionRegistry.isOnline(1L)).willReturn(false);
 
         listener.onFlashBroadcast(new FlashBroadcastEvent(
-                FlashPushEvent.memberJoined(10L, 2L, "영희", null), List.of(1L)));
+                FlashPushEvent.memberJoined(10L, Activity.MEAL, 2L, "영희", null), List.of(1L)));
 
         ArgumentCaptor<PushMessage> captor = ArgumentCaptor.forClass(PushMessage.class);
         verify(pushNotificationService).pushToUsers(any(), captor.capture());
-        assertThat(captor.getValue().title()).isEqualTo("영희님이 합류했어요");
+        assertThat(captor.getValue().title()).isEqualTo("밥 · 영희님이 합류했어요");
         assertThat(captor.getValue().data()).containsEntry("type", "MEMBER_JOINED");
     }
 
@@ -89,11 +89,11 @@ class FlashPushListenerTest {
         LocalDateTime at = LocalDateTime.now().plusHours(1);
         List<FlashPushEvent> all = List.of(
                 newFlashPayload(),
-                FlashPushEvent.memberJoined(10L, 2L, "영희", null),
-                FlashPushEvent.placeUpdated(10L, 1L, "민수", null, null, "홍대입구역"),
-                FlashPushEvent.placeUpdated(10L, 1L, "민수", null, "홍대입구역", "합정역"),
-                FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, null, at),
-                FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, at, at.plusMinutes(30)));
+                FlashPushEvent.memberJoined(10L, Activity.MEAL, 2L, "영희", null),
+                FlashPushEvent.placeUpdated(10L, Activity.MEAL, 1L, "민수", null, null, "홍대입구역"),
+                FlashPushEvent.placeUpdated(10L, Activity.MEAL, 1L, "민수", null, "홍대입구역", "합정역"),
+                FlashPushEvent.meetAtUpdated(10L, Activity.MEAL, 1L, "민수", null, null, at),
+                FlashPushEvent.meetAtUpdated(10L, Activity.MEAL, 1L, "민수", null, at, at.plusMinutes(30)));
         for (FlashPushEvent e : all) {
             PushMessage m = pushed(e);
             assertThat(m.title() + m.body()).doesNotContain("번개");
@@ -105,13 +105,13 @@ class FlashPushListenerTest {
     void buildsPlaceMessages() {
         given(sessionRegistry.isOnline(2L)).willReturn(false);
 
-        PushMessage first = pushed(FlashPushEvent.placeUpdated(10L, 1L, "민수", null, null, "홍대입구역"));
-        assertThat(first.title()).isEqualTo("장소가 정해졌어요");
+        PushMessage first = pushed(FlashPushEvent.placeUpdated(10L, Activity.MEAL, 1L, "민수", null, null, "홍대입구역"));
+        assertThat(first.title()).isEqualTo("밥 · 장소가 정해졌어요");
         assertThat(first.body()).isEqualTo("홍대입구역 · 민수님이 정했어요");
         assertThat(first.data()).containsEntry("type", "PLACE_UPDATED").containsEntry("flashId", "10");
 
-        PushMessage change = pushed(FlashPushEvent.placeUpdated(10L, 1L, "민수", null, "홍대입구역", "합정역"));
-        assertThat(change.title()).isEqualTo("장소가 바뀌었어요");
+        PushMessage change = pushed(FlashPushEvent.placeUpdated(10L, Activity.MEAL, 1L, "민수", null, "홍대입구역", "합정역"));
+        assertThat(change.title()).isEqualTo("밥 · 장소가 바뀌었어요");
         assertThat(change.body()).isEqualTo("홍대입구역 → 합정역 · 민수님이 바꿨어요");
     }
 
@@ -121,12 +121,12 @@ class FlashPushListenerTest {
         given(sessionRegistry.isOnline(2L)).willReturn(false);
         LocalDateTime base = LocalDateTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0);
 
-        PushMessage first = pushed(FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, null, base));
-        assertThat(first.title()).isEqualTo("약속 시간이 정해졌어요");
+        PushMessage first = pushed(FlashPushEvent.meetAtUpdated(10L, Activity.MEAL, 1L, "민수", null, null, base));
+        assertThat(first.title()).isEqualTo("밥 · 약속 시간이 정해졌어요");
         assertThat(first.body()).endsWith("· 민수님이 정했어요");
 
-        PushMessage change = pushed(FlashPushEvent.meetAtUpdated(10L, 1L, "민수", null, base, base.plusMinutes(30)));
-        assertThat(change.title()).isEqualTo("약속 시간이 바뀌었어요");
+        PushMessage change = pushed(FlashPushEvent.meetAtUpdated(10L, Activity.MEAL, 1L, "민수", null, base, base.plusMinutes(30)));
+        assertThat(change.title()).isEqualTo("밥 · 약속 시간이 바뀌었어요");
         assertThat(change.body()).contains(" → ").endsWith("· 민수님이 바꿨어요");
         assertThat(change.data()).containsEntry("type", "MEET_AT_UPDATED");
     }
