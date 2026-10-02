@@ -27,6 +27,13 @@
 		rewrite * /app.html
 		file_server
 	}
+	# 앱 최신 버전 정보 — 앱이 켜질 때 읽고 "새 버전이 있어요"를 띄운다(APK 직접 배포라 스토어가 대신 못 알려줌).
+	# 새 버전을 낼 때 이 파일만 고쳐 푸시하면 된다. 바로 보이게 캐시하지 않는다.
+	handle /app-version.json {
+		root * /srv/public
+		header Cache-Control "no-cache"
+		file_server
+	}
 	# 이용약관·개인정보 처리방침 — 앱 랜딩의 약관 링크가 여기로 온다
 	handle /terms {
 		root * /srv/public
