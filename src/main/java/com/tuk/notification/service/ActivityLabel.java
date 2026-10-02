@@ -20,6 +20,7 @@ final class ActivityLabel {
             case WALK -> "산책";
             case MOVIE -> "영화";
             case KARAOKE -> "노래방";
+            case PC_ROOM -> "PC방";
             case ANYTHING -> "아무거나";
         };
     }

@@ -35,7 +35,7 @@ Flutter 앱 개발용. 이 문서는 백엔드 코드(컨트롤러/DTO)에서 �
 | 502 | 카카오 등 외부 API 장애 (우리 잘못 아님) |
 
 ### 공유 enum
-- **Activity**: `MEAL` `DRINK` `CAFE` `WALK` `MOVIE` `KARAOKE` `ANYTHING`
+- **Activity**: `MEAL` `DRINK` `CAFE` `WALK` `MOVIE` `KARAOKE` `PC_ROOM` `ANYTHING`
 - **Platform**: `IOS` `ANDROID`
 - **친구 status**: `PENDING` `ACCEPTED`
 - **번개 수신 myStatus**: `PENDING`(아직 합류 안 함) `JOINED`
