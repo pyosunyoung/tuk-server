@@ -150,6 +150,8 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
   - 서버에는 **공개 키만** 있다(암호화만 가능). **복호화 개인 키(`AGE-SECRET-KEY-…`)는 서버에 두지 않고 운영자가 따로 보관** — 서버를 잃어도 B2 사본을 풀 수 있게, 서버가 털려도 지난 백업은 못 풀게.
   - 서버에 `rclone`·`age` 필요(`apt install -y rclone age`).
   - B2 에서 복구: `rclone copyto b2:<버킷>/<파일>.dump.age x.dump.age`(env 변수 설정 후) → `age -d -i <개인키파일> -o x.dump x.dump.age` → 아래 복구 절차.
+- **백업 감시**: env 에 `HC_PING_URL`(healthchecks.io)이 있으면 성공 시 그 주소, 실패 시 `/fail` 을 부른다 → 실패는 즉시, 아예 안 돌면 하루+유예 뒤 메일.
+- **서버 감시**: UptimeRobot 이 5분마다 `/actuator/health` 를 확인(2026-10-07~, 운영자 메일로 알림). 배포 중 잠깐의 502 로 Down/Up 알림이 올 수 있다.
 - Redis 는 백업 안 함(refresh 토큰·콜 상태뿐 — 잃으면 재로그인).
 - 상태 확인: `systemctl list-timers tuk-db-backup.timer` · `journalctl -u tuk-db-backup.service`
 - 수동 실행: `systemctl start tuk-db-backup.service`

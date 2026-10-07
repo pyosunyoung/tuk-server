@@ -3,7 +3,19 @@
 #   1) 서버 디스크: /var/backups/tuk, 14일 보관 (실수로 지운 데이터를 빨리 살리는 용도)
 #   2) 외부 사본: 암호화해서 Backblaze B2, 30일 보관 (서버가 통째로 사라져도 남는 용도)
 # 외부 사본 설정(/etc/tuk/backup-offsite.env)이 없으면 1) 만 한다.
-set -euo pipefail
+#   3) HC_PING_URL 이 있으면 healthchecks.io 에 성공/실패를 알린다 — 백업이 조용히 멈추지 않게.
+#      실패하면 바로, 아예 안 돌면(서버 꺼짐·타이머 꺼짐) 하루 + 유예 뒤에 메일이 온다.
+set -Eeuo pipefail
+
+ENV_FILE=/etc/tuk/backup-offsite.env
+# shellcheck source=/dev/null
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
+
+ping_hc() {
+  [[ -n "${HC_PING_URL:-}" ]] || return 0
+  curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL$1" || echo "healthchecks 알림 실패($1)" >&2
+}
+trap 'ping_hc /fail' ERR
 
 DIR=/var/backups/tuk
 KEEP_DAYS=14
@@ -28,13 +40,12 @@ echo "백업 완료: $OUT ($(du -h "$OUT" | cut -f1)), 보관 $(ls "$DIR"/tuk-*.
 #   B2_KEY_ID=…  B2_APP_KEY=…      (이 버킷 전용 앱 키)
 #   AGE_RECIPIENT=age1…            (공개 키 — 암호화만 가능. 풀 수 있는 개인 키는 서버에 두지 않는다)
 #   OFFSITE_KEEP_DAYS=30           (선택)
-ENV_FILE=/etc/tuk/backup-offsite.env
-if [[ ! -f "$ENV_FILE" ]]; then
+#   HC_PING_URL=https://hc-ping.com/… (선택)
+if [[ -z "${B2_BUCKET:-}" ]]; then
   echo "외부 사본 설정 없음($ENV_FILE) — 서버 디스크에만 저장"
+  ping_hc ""
   exit 0
 fi
-# shellcheck source=/dev/null
-source "$ENV_FILE"
 OFFSITE_KEEP_DAYS=${OFFSITE_KEEP_DAYS:-30}
 
 # rclone 설정 파일 없이 환경 변수로 원격(b2:)을 정의한다 — 비밀은 env 파일 한 곳에만.
@@ -43,6 +54,8 @@ export RCLONE_CONFIG_B2_ACCOUNT="$B2_KEY_ID"
 export RCLONE_CONFIG_B2_KEY="$B2_APP_KEY"
 # 지운 파일이 B2 에 '숨김 버전'으로 남아 용량을 차지하지 않게 바로 지운다
 export RCLONE_CONFIG_B2_HARD_DELETE=true
+# 설정 파일이 없다는 안내(NOTICE)는 빼고 오류만 남긴다
+export RCLONE_LOG_LEVEL=ERROR
 
 ENC="$OUT.age.partial"
 trap 'rm -f "$ENC"' EXIT
@@ -56,8 +69,10 @@ local_size=$(stat -c %s "$ENC")
 remote_size=$(rclone size --json "$REMOTE" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')
 if [[ "$local_size" != "$remote_size" ]]; then
   echo "외부 사본 크기 불일치: 로컬 $local_size, B2 ${remote_size:-없음}" >&2
+  ping_hc /fail
   exit 1
 fi
 
 rclone delete --min-age "${OFFSITE_KEEP_DAYS}d" --include "tuk-*.dump.age" "b2:$B2_BUCKET"
 echo "외부 사본 완료: $REMOTE ($local_size bytes), B2 보관 $(rclone lsf --include 'tuk-*.dump.age' "b2:$B2_BUCKET" | wc -l)개"
+ping_hc ""
