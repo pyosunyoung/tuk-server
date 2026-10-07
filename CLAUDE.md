@@ -146,7 +146,10 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 
 ### DB 백업 (2026-09-16~)
 - **매일 04:00 KST** systemd 타이머가 `pg_dump -Fc` → `/var/backups/tuk/tuk-YYYYMMDD-HHMM.dump`(600), **14일 보관**. 파일은 `ops/backup/` 에 있다(서버 재구축 시 `/usr/local/bin`·`/etc/systemd/system` 에 복사 후 `systemctl enable --now tuk-db-backup.timer`).
-- ⚠️ **서버 디스크에만 저장** — 실수로 지운 데이터는 살리지만 서버가 통째로 사라지면 백업도 사라진다. 실사용 전 외부 저장소(R2/B2 무료 구간)로 사본을 내보낼 것.
+- **외부 사본(2026-10-07~)**: 같은 스크립트가 덤프를 **age 로 암호화**해 Backblaze B2 비공개 버킷에 올린다(`tuk-YYYYMMDD-HHMM.dump.age`, **30일 보관**, 업로드 후 크기 대조). 설정은 서버 `/etc/tuk/backup-offsite.env`(root 600: `B2_BUCKET`·`B2_KEY_ID`·`B2_APP_KEY`·`AGE_RECIPIENT`). 이 파일이 없으면 서버 디스크에만 저장.
+  - 서버에는 **공개 키만** 있다(암호화만 가능). **복호화 개인 키(`AGE-SECRET-KEY-…`)는 서버에 두지 않고 운영자가 따로 보관** — 서버를 잃어도 B2 사본을 풀 수 있게, 서버가 털려도 지난 백업은 못 풀게.
+  - 서버에 `rclone`·`age` 필요(`apt install -y rclone age`).
+  - B2 에서 복구: `rclone copyto b2:<버킷>/<파일>.dump.age x.dump.age`(env 변수 설정 후) → `age -d -i <개인키파일> -o x.dump x.dump.age` → 아래 복구 절차.
 - Redis 는 백업 안 함(refresh 토큰·콜 상태뿐 — 잃으면 재로그인).
 - 상태 확인: `systemctl list-timers tuk-db-backup.timer` · `journalctl -u tuk-db-backup.service`
 - 수동 실행: `systemctl start tuk-db-backup.service`
