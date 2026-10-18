@@ -2,13 +2,14 @@
 
 > 친한 친구끼리 **거절 걱정 없이 "지금 볼래?"를 던지는** 즉흥 만남 앱의 서버.
 > 앱(Flutter) 리포: [pyosunyoung/tuk-app](https://github.com/pyosunyoung/tuk-app)
+> **전체 정리(기획 · 구조 · 부딪힌 문제 · 운영 · 타임라인)**: [tuk-app/docs/OVERVIEW.md](https://github.com/pyosunyoung/tuk-app/blob/main/docs/OVERVIEW.md)
 
 단톡방에 "오늘 저녁 누구 시간 돼?"를 던지고 읽씹당하는 경험에서 시작했습니다.
 툭은 **지금 한가한 친한 친구만 보여주고, 한 탭으로 부르고, 거절은 아무에게도 보이지 않게** 만듭니다.
 
 - **운영 중**: Vultr 서울 VM 한 대 · Docker Compose · Caddy 자동 HTTPS (2026-09-15 배포)
 - **배포**: `main` 에 push → GitHub Actions 가 테스트 → 이미지 → 배포 → health 확인 → 실패 시 자동 롤백
-- **테스트 137개** · Flyway 마이그레이션 V1 ~ V5 · 매일 백업(암호화 외부 사본) · 서버/백업 감시
+- **테스트 140개** · Flyway 마이그레이션 V1 ~ V5 · 매일 백업(암호화 외부 사본) · 서버/백업 감시
 
 ---
 
@@ -120,10 +121,11 @@ test(PG·Redis 서비스 컨테이너) → image(GHCR) → deploy(SSH 강제 명
 ## 테스트
 
 ```bash
-./gradlew test    # 137개
+./gradlew test    # 140개(동시성 테스트 20회 반복 포함 실행 159회)
 ```
 
 서비스는 Mockito, 레포지토리·탈퇴·마이그레이션은 **실제 PostgreSQL**(`@DataJpaTest` / `@SpringBootTest`)로 검증한다. 제약조건·네이티브 쿼리를 H2 로 대신하면 실제와 달라져서다.
+refresh rotation 의 원자성도 **실제 Redis 에 같은 토큰으로 동시에 요청**해 교체가 정확히 한 번만 되는지 본다(Lua 대신 읽기→비교→쓰기로 바꾸면 8요청에 토큰 8개가 발급돼 실패하는 것까지 확인).
 
 ## 문서
 
