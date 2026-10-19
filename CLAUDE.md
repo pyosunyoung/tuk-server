@@ -115,6 +115,7 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 - DB·Redis 는 포트를 외부에 열지 않는다(`expose` 만). 앱만 내부 네트워크로 붙는다.
 - Redis 는 AOF 켜둔다 — refresh 토큰이 여기 있어서 끄면 재시작 시 전원 재로그인.
 - 서비스 계정 키는 **이미지에 굽지 않고** 볼륨으로 주입한다(`.dockerignore` 로도 차단).
+- **카카오 로그인 발급 앱 확인(2026-10-19~)**: `.env` 의 `KAKAO_APP_ID` = **"툭" 앱**의 카카오 앱 ID(숫자, 장소 검색용 "공유캘린더" 앱 아님). 비어 있으면 확인을 건너뛰고 기동 시 경고(`kakao.app-id 미설정`). 값을 넣은 뒤 `docker compose -f docker-compose.prod.yml up -d app` 로 재생성해야 반영.
 - 직접 실행하려면: `SPRING_PROFILES_ACTIVE=prod` + `DB_URL` `DB_USERNAME` `DB_PASSWORD` `REDIS_HOST` `REDIS_PORT` `JWT_SECRET`(32바이트+) `CORS_ALLOWED_ORIGINS` (선택 `FCM_ENABLED` `FCM_CREDENTIALS_PATH`)
 
 운영 프로필 검증 완료: 헬스 200 / Swagger·dev로그인·다른 actuator 401 / 허용 오리진만 CORS 통과.

@@ -9,7 +9,7 @@
 
 - **운영 중**: Vultr 서울 VM 한 대 · Docker Compose · Caddy 자동 HTTPS (2026-09-15 배포)
 - **배포**: `main` 에 push → GitHub Actions 가 테스트 → 이미지 → 배포 → health 확인 → 실패 시 자동 롤백
-- **테스트 140개** · Flyway 마이그레이션 V1 ~ V5 · 매일 백업(암호화 외부 사본) · 서버/백업 감시
+- **테스트 146개** · Flyway 마이그레이션 V1 ~ V6 · 매일 백업(암호화 외부 사본) · 서버/백업 감시
 
 ---
 
@@ -68,7 +68,7 @@ flowchart LR
 
 요청 흐름은 **Controller → Service → Repository**, 패키지는 **도메인별**(`user` / `friendship` / `presence` / `flash` / `notification` / `place` / `global`).
 
-**인증**: 앱이 카카오 SDK 로 받은 토큰을 서버가 카카오에 검증 → 자체 JWT(access 30분 + refresh 14일). refresh 는 **Redis Lua 로 원자적 rotation** 이라 같은 토큰으로 동시에 와도 하나만 성공한다. WebSocket 은 CONNECT 헤더의 JWT 로 인증.
+**인증**: 앱이 카카오 SDK 로 받은 토큰을 서버가 카카오에 검증 → 자체 JWT(access 30분 + refresh 14일). 검증할 때 그 토큰이 **툭 앱에서 발급된 것인지(app_id)** 먼저 확인한다 — 다른 카카오 앱의 토큰으로 로그인되는 것(토큰 치환)을 막기 위해. refresh 는 **Redis Lua 로 원자적 rotation** 이라 같은 토큰으로 동시에 와도 하나만 성공한다. WebSocket 은 CONNECT 헤더의 JWT 로 인증.
 
 **장소 검색**은 서버가 카카오 로컬 API 를 대신 호출한다 — REST 키를 앱에 넣으면 APK 에서 누구나 꺼내 쓸 수 있어서.
 
@@ -121,7 +121,7 @@ test(PG·Redis 서비스 컨테이너) → image(GHCR) → deploy(SSH 강제 명
 ## 테스트
 
 ```bash
-./gradlew test    # 140개(동시성 테스트 20회 반복 포함 실행 159회)
+./gradlew test    # 146개(동시성 테스트 20회 반복 포함 실행 165회)
 ```
 
 서비스는 Mockito, 레포지토리·탈퇴·마이그레이션은 **실제 PostgreSQL**(`@DataJpaTest` / `@SpringBootTest`)로 검증한다. 제약조건·네이티브 쿼리를 H2 로 대신하면 실제와 달라져서다.
