@@ -40,6 +40,14 @@ services:
     volumes:
       # 왼쪽 경로에 서비스 계정 키를 두면 컨테이너 안에서 읽는다(읽기 전용)
       - ./firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      # 앱 로그 파일(application-prod.yml). 배포로 컨테이너가 바뀌어도 남는다 — 보는 법은 CLAUDE.md "앱 로그"
+      - tuk-app-logs:/app/logs
+    # docker logs 자체는 크기 제한(기본은 무제한이라 디스크를 채울 수 있다)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # 외부 노출은 Caddy 가 맡는다. 앱은 내부 네트워크에서만 접근된다.
     expose:
       - "8080"
@@ -107,6 +115,7 @@ services:
       - "6379"
 
 volumes:
+  tuk-app-logs:
   tuk-postgres-data:
   tuk-redis-data:
   caddy-data:

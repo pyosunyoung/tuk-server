@@ -32,7 +32,8 @@ ENV TZ=Asia/Seoul \
 
 WORKDIR /app
 COPY --from=build /workspace/build/libs/*.jar app.jar
-RUN chown -R tuk:tuk /app
+# 로그 폴더는 이미지에서 미리 만들어 tuk 소유로 둔다 — 이름 있는 볼륨은 처음 붙을 때 이 소유권을 그대로 물려받는다
+RUN mkdir -p /app/logs && chown -R tuk:tuk /app
 USER tuk
 
 EXPOSE 8080

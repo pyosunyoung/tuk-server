@@ -20,6 +20,15 @@ springdoc:
     enabled: false
 
 logging:
+  # 콘솔(docker logs)과 함께 파일에도 남긴다. 컨테이너는 배포마다 새로 만들어져 docker logs 가 사라지므로,
+  # 파일은 compose 의 tuk-app-logs 볼륨에 둬서 배포 뒤에도 남게 한다. 날짜별로 나눠 압축, 30일 · 300MB 까지.
+  file:
+    name: /app/logs/tuk.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+      total-size-cap: 300MB
   level:
     root: info
     com.tuk: info

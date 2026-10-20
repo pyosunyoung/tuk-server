@@ -123,6 +123,17 @@ Caddy 가 `TUK_DOMAIN` 으로 Let's Encrypt 인증서를 자동 발급·갱신�
 첫 배포는 수동(`git archive` 전송 + 서버 빌드)이었고, 2026-09-16 부터 위 CI/CD 로 전환.
 외부 검증: health 200 / HTTP→HTTPS 308 / Swagger·actuator·dev로그인 401 / 타 오리진 CORS 403 / `/ws` 101 / 8080 외부 차단. 이미지 빌드 약 4분, 앱 기동 약 40초.
 
+### 앱 로그 (2026-10-20~)
+- `docker logs` 는 배포로 컨테이너가 새로 만들어지면 사라진다(크기도 10MB×3 으로 제한). 그래서 앱이 **파일**에도 쓴다:
+  컨테이너 `/app/logs/tuk.log` = 이름 있는 볼륨 `tuk-app-logs` → **배포해도 남는다**. 날짜별로 `tuk.log.YYYY-MM-DD.N.gz` 로 나뉘고 30일 · 300MB 까지.
+- 보는 법(앱 컨테이너가 떠 있을 때):
+  ```bash
+  docker exec tuk-app ls -l /app/logs                                  # 파일 목록
+  docker exec tuk-app grep -E "ERROR|WARN" /app/logs/tuk.log            # 오늘 에러·경고
+  docker exec tuk-app sh -c 'zcat /app/logs/tuk.log.2026-10-21.0.gz | grep ERROR'   # 지난 날짜
+  ```
+- 로그엔 userId 만 찍히고 닉네임·토큰은 찍지 않는다(SQL 바인딩 로그도 warn 으로 꺼 둠).
+
 ### 서버 SSH 강화 (2026-09-17~)
 - `ops/ssh/00-tuk-hardening.conf` → 서버 `/etc/ssh/sshd_config.d/`. **비밀번호 로그인 전면 금지**, root 는 키로만(`prohibit-password`), `MaxAuthTries 3`.
 - 적용 전 24시간 로그인 실패 **6,454회**(한 IP 3,248회) 관측 — 비밀번호 대입 공격이 상시 들어온다.
