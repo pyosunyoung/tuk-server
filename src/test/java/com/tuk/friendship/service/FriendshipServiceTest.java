@@ -3,6 +3,7 @@ package com.tuk.friendship.service;
 import com.tuk.friendship.domain.Friendship;
 import com.tuk.friendship.dto.FriendRequestResult;
 import com.tuk.friendship.event.FriendshipEvent;
+import com.tuk.friendship.event.FriendsChangedEvent;
 import com.tuk.friendship.dto.InviteCodeResponse;
 import com.tuk.friendship.repository.FriendshipRepository;
 import com.tuk.global.exception.BadRequestException;
@@ -320,7 +321,7 @@ class FriendshipServiceTest {
     // --- 친구 끊기 / 보낸 신청 취소 ---
 
     @Test
-    @DisplayName("unfriend: 친구면 관계를 지우고, 알림은 보내지 않는다")
+    @DisplayName("unfriend: 친구면 관계를 지우고, 알림(FriendshipEvent)은 없이 상대 목록 갱신 신호만 보낸다")
     void unfriendDeletesSilently() {
         Friendship accepted = Friendship.builder().requester(user(2L)).addressee(user(1L)).build();
         accepted.accept();
@@ -329,7 +330,8 @@ class FriendshipServiceTest {
         friendshipService.unfriend(1L, 2L); // 방향 무관 — 상대가 먼저 신청했던 관계도 끊을 수 있다
 
         verify(friendshipRepository).delete(accepted);
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(eventPublisher).publishEvent(new FriendsChangedEvent(2L));
+        verify(eventPublisher, never()).publishEvent(any(FriendshipEvent.class));
     }
 
     @Test
@@ -353,6 +355,8 @@ class FriendshipServiceTest {
         friendshipService.cancelRequest(1L, 50L);
 
         verify(friendshipRepository).delete(mine);
+        verify(eventPublisher).publishEvent(new FriendsChangedEvent(2L)); // 받은 쪽 목록만 조용히
+        verify(eventPublisher, never()).publishEvent(any(FriendshipEvent.class));
     }
 
     @Test

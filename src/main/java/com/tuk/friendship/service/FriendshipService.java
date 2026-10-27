@@ -8,6 +8,7 @@ import com.tuk.friendship.dto.InviteCodeResponse;
 import com.tuk.friendship.dto.ReceivedRequestResponse;
 import com.tuk.friendship.dto.SentRequestResponse;
 import com.tuk.friendship.event.FriendshipEvent;
+import com.tuk.friendship.event.FriendsChangedEvent;
 import com.tuk.friendship.repository.FriendshipRepository;
 import com.tuk.global.exception.BadRequestException;
 import com.tuk.global.exception.ForbiddenException;
@@ -110,6 +111,7 @@ public class FriendshipService {
 
     /**
      * 친구 끊기. 관계를 지워 양쪽 목록에서 조용히 사라진다 — 상대에게 알림은 없다.
+     * 상대가 앱을 보고 있으면 목록 갱신 신호만 보낸다(FriendsChangedEvent).
      * 다시 친구가 되려면 초대 코드부터(한쪽만 숨기는 방식은 "보낸 툭이 계속 무응답"인
      * 이상한 상태를 만들어서 택하지 않았다).
      *
@@ -122,6 +124,8 @@ public class FriendshipService {
                 .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
                 .orElseThrow(() -> new NotFoundException("친구가 아니에요."));
         friendshipRepository.delete(friendship);
+        // 상대 앱이 끊은 사람을 계속 보지 않게 목록만 조용히 맞춘다(알림 아님)
+        eventPublisher.publishEvent(new FriendsChangedEvent(friendUserId));
     }
 
     /**
@@ -139,6 +143,8 @@ public class FriendshipService {
             throw new BadRequestException("이미 친구가 됐어요.");
         }
         friendshipRepository.delete(friendship);
+        // 받은 쪽에 취소된 신청이 남아 있다가 수락하면 404 — 목록만 조용히 맞춘다
+        eventPublisher.publishEvent(new FriendsChangedEvent(friendship.getAddressee().getId()));
     }
 
     /**
