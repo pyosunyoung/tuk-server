@@ -1,175 +1,182 @@
-# 툭 (Tuk) 백엔드
+# 툭 (Tuk) 백엔드 서버
 
-> 친한 친구끼리 **거절 걱정 없이 "지금 볼래?"를 던지는** 즉흥 만남 앱의 서버
->
-> - 앱(Flutter) 리포: [pyosunyoung/tuk-app](https://github.com/pyosunyoung/tuk-app)
-> - 전체 정리(기획, 구조, 부딪힌 문제, 운영, 타임라인): [tuk-app/docs/OVERVIEW.md](https://github.com/pyosunyoung/tuk-app/blob/main/docs/OVERVIEW.md)
+친한 친구끼리 거절 부담 없이 "지금 볼래?"를 던지는 즉흥 만남 앱의 서버입니다.
 
-단톡방에 "오늘 저녁 누구 시간 돼?"를 던지고 읽씹당하는 경험에서 시작했다.
-툭은 **지금 한가한 친한 친구만 보여 주고, 한 탭으로 부르고, 거절은 아무에게도 보이지 않게** 만든다.
+기획, 서버, 앱, 인프라까지 1인으로 개발해 운영 중입니다. 실시간 알림, 토큰 동시성, 데이터 무결성을 실제 DB와 Redis로 검증했고, 자동 배포와 롤백, 암호화 백업, 감시까지 직접 구성했습니다.
 
-- **운영 중**: Vultr 서울 VM 한 대에 Docker Compose로 올리고, Caddy가 HTTPS를 자동으로 발급한다(2026-09-15 배포)
-- **배포**: `main`에 push하면 GitHub Actions가 테스트, 이미지 빌드, 배포, health 확인을 하고 실패하면 직전 버전으로 되돌린다
-- **품질과 운영**: 테스트 149개, Flyway 마이그레이션 V1 ~ V6, 매일 암호화 백업(서버 밖 사본), 서버와 백업 감시, 앱 로그 30일 보관
-- **실사용**: 2026-10-22 ~ 10-25에 지인 3명과 실제 폰 4대로 썼다. 툭 9개, 합류 12번, 툭을 받고 합류까지 **평균 1~2분**, 그 기간 서버 에러 로그 **0건**
+<table>
+<tr><td align="center" valign="top"><img src="docs/images/real/s_home_received.jpg" width="175"><br>툭을 받은 홈</td><td align="center" valign="top"><img src="docs/images/real/compose.jpg" width="175"><br>툭 던지기</td><td align="center" valign="top"><img src="docs/images/real/room.jpg" width="175"><br>모임방</td><td align="center" valign="top"><img src="docs/images/real/s_presence_home.jpg" width="175"><br>지금 한가한 친구</td></tr>
+</table>
 
-친구 폰 잠금화면에 실제로 온 알림이다(새 툭, 합류, 약속 시간 변경, 장소 변경).
+- **역할**: 1인 개발 (기획, 서버, 앱, 인프라)
+- **스택**: Spring Boot 4, Java 17, JPA, PostgreSQL, Redis, WebSocket(STOMP), FCM, Flyway
+- **인프라**: Vultr 서울 VM, Docker Compose, Caddy, GitHub Actions, GHCR, Backblaze B2
+- **운영**: 2026년 9월부터 운영 중, 월 $10
+- **테스트**: 149개, 실제 PostgreSQL과 Redis 통합 테스트 포함, 실패하면 배포되지 않음
+- **앱 리포**: [pyosunyoung/tuk-app](https://github.com/pyosunyoung/tuk-app) (전체 화면과 실사용 기록)
+
+## 아키텍처
+
+```mermaid
+flowchart LR
+    App["Flutter 앱"] -->|"REST, JWT"| Caddy
+    App <-->|"STOMP"| Caddy
+    Caddy["Caddy (HTTPS 자동 발급)"] --> Server["Spring Boot"]
+    Server --> PG[("PostgreSQL")]
+    Server --> Redis[("Redis")]
+    Server -->|"미접속 사용자"| FCM["FCM"]
+    FCM --> App
+    Server -->|"토큰 검증, 장소 검색"| Kakao["카카오 API"]
+    PG -.->|"매일 암호화 백업"| B2[("Backblaze B2")]
+```
+
+## 핵심 문제 해결
+
+### 1. Refresh Token 교체의 동시성
+
+- **문제**: 읽기, 비교, 쓰기를 따로 실행하면 같은 토큰으로 동시에 온 요청이 모두 통과합니다. 토큰이 여러 개 발급되고 탈취 탐지도 무력화됩니다.
+- **해결**: 비교와 교체, 파기를 Redis Lua 스크립트 하나로 묶었습니다. 앱은 동시 401을 refresh 1회로 합쳐 정상 사용자가 재사용 탐지에 걸리지 않게 했습니다.
+- **검증**: 실제 Redis에 같은 토큰으로 동시 요청을 보냅니다. Lua 구현은 8건 중 교체 1건, 비원자 구현으로 바꾸면 8건 모두 교체되어 테스트가 실패합니다.
+
+```lua
+local cur = redis.call('get', KEYS[1])
+if not cur then return -1 end
+if cur == ARGV[1] then
+  redis.call('set', KEYS[1], ARGV[2], 'PX', ARGV[3])
+  return 1
+end
+redis.call('del', KEYS[1])
+return 0
+```
+
+코드: [RedisRefreshTokenStore.java](src/main/java/com/tuk/global/auth/token/RedisRefreshTokenStore.java), [RedisRefreshTokenStoreTest.java](src/test/java/com/tuk/global/auth/token/RedisRefreshTokenStoreTest.java)
+
+### 2. 커밋된 사건만, 받을 수 있는 경로로 알림
+
+- **문제**: 트랜잭션 안에서 알림을 보내면 롤백돼도 알림이 나갑니다. 접속 중인 사용자와 아닌 사용자의 전달 경로도 다릅니다.
+- **해결**: 서비스는 이벤트만 발행하고, `AFTER_COMMIT` 리스너 두 개가 접속자에게 STOMP, 미접속자에게 FCM으로 보냅니다. 커밋 이후 만료 토큰을 삭제하는 작업은 `REQUIRES_NEW`로 분리했습니다.
+- **소음 관리**: 정한 본인을 제외하고, 같은 값을 다시 저장하면 알리지 않으며, 한가함 켜기는 푸시하지 않습니다.
+
+```java
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onFlashBroadcast(FlashBroadcastEvent event) {
+    for (Long targetId : event.targetUserIds()) {
+        if (sessionRegistry.isOnline(targetId)) {
+            messagingTemplate.convertAndSendToUser(String.valueOf(targetId), DESTINATION, event.payload());
+        }
+    }
+}
+```
+
+(전송 실패를 대상별로 격리하는 처리는 생략한 발췌입니다.)
+
+코드: [FlashEventBroadcaster.java](src/main/java/com/tuk/flash/ws/FlashEventBroadcaster.java), [FlashPushListener.java](src/main/java/com/tuk/notification/service/FlashPushListener.java), [PushNotificationService.java](src/main/java/com/tuk/notification/service/PushNotificationService.java)
+
+### 3. 비즈니스 규칙을 서버 한 곳으로 통합
+
+- **문제**: 모임 노출 기간의 조건을 고칠 때마다 다른 버그가 나왔습니다. 합류할 수 없는 초대가 남고, 혼자인 모임이 남고, 시간을 정하지 않은 모임이 사라졌습니다. 앱도 같은 판단을 따로 하고 있었습니다.
+- **해결**: 규칙을 [`MeetupLifecycle`](src/main/java/com/tuk/flash/domain/MeetupLifecycle.java)로 모으고 응답의 `visibleUntil`로 내려줍니다. 앱은 이 값만 따릅니다.
+- **검증**: 6시간 경계를 받은 쪽과 보낸 쪽에서 각각 테스트합니다. 리포지토리 슬라이스 테스트가 만료된 툭이 목록에 섞이는 쿼리 오류를 배포 전에 잡았습니다.
+
+### 4. 제품 원칙을 데이터 모델로 강제
+
+- **거절이 보이지 않음**: 수신 상태는 `PENDING`, `JOINED` 두 개뿐입니다. `DECLINED`와 거절 API를 일부러 만들지 않아 거절 기록 자체가 남지 않습니다.
+- **멱등 합류**: `UNIQUE(flash_id, user_id)`로 재시도해도 중복 합류가 생기지 않습니다.
+- **친구 관계 중복 방지**: 방향과 무관한 정규화 쌍에 UNIQUE를 걸고, 경합으로 인한 예외는 400으로 변환합니다.
+- **대상 재검증**: 앱이 보낸 대상을 믿지 않고 서버에서 친구 관계를 다시 확인합니다.
+
+### 5. 데이터 정합성과 쿼리
+
+- **탈퇴**: 외래키에 CASCADE가 없어 자식부터 부모 순으로 한 트랜잭션에서 삭제합니다. 삭제 한 줄을 빼면 외래키 위반으로 실패하는 실제 DB 테스트로 순서를 고정했습니다. ([AccountDeletionServiceTest.java](src/test/java/com/tuk/user/service/AccountDeletionServiceTest.java))
+- **N+1**: 툭 목록의 수신자 조회를 IN 쿼리 한 번으로 바꿨습니다. 툭 20개 기준 쿼리 21회가 1회로 줄었고 Hibernate Statistics로 측정했습니다.
+- **마이그레이션**: 같은 제약의 이름이 DB마다 달라 실패한 마이그레이션을 `pg_constraint`에서 정의로 찾아 교체하도록 수정했습니다. ([V5](src/main/resources/db/migration/V5__activity_pc_room.sql))
+
+### 6. 보안
+
+- **카카오 토큰 발급 앱 확인**: 다른 카카오 앱에서 발급된 토큰을 거부합니다. `app_id`를 비교하고, 설정이 비어 있으면 경고만 남겨 배포 순서로 로그인이 막히지 않게 했습니다. ([KakaoClient.java](src/main/java/com/tuk/global/auth/social/KakaoClient.java))
+- **초대 코드 대입 방지**: 틀린 시도만 Redis로 세어 10분에 10회를 넘으면 429로 응답합니다. ([InviteCodeAttemptLimiter.java](src/main/java/com/tuk/friendship/service/InviteCodeAttemptLimiter.java))
+- **운영 프로필**: Swagger, 개발용 로그인, health 외 actuator를 차단하고 허용 오리진만 CORS를 통과시킵니다.
+- **키 관리**: 카카오 REST 키는 서버에만 두고 장소 검색을 서버가 대신 호출합니다.
+
+## 운영
+
+```
+test      PostgreSQL, Redis 서비스 컨테이너로 전체 테스트
+image     GHCR에 커밋 SHA 태그로 저장
+deploy    SSH 강제 명령으로 배포 스크립트 실행
+health    최대 180초 상태 확인
+rollback  실패하면 직전 이미지로 자동 복구
+```
+
+| 영역 | 구성 | 결과 |
+|---|---|---|
+| 배포 | main push 시 자동, 서버는 이미지만 받음 | 3~5분, 2GB VM 빌드 부담 제거 |
+| 배포 키 | `restrict,command=`로 배포 스크립트만 허용 | 셸, 파일 복사, 포워딩 불가 확인 |
+| SSH | 비밀번호 로그인 차단, 키 전용 | 비밀번호 실패 하루 5,855건에서 0건 |
+| 백업 | 매일 `pg_dump`, `age` 암호화, B2 30일 보관 | B2 사본 복원, 운영과 행 수 일치 |
+| 감시 | UptimeRobot 5분, healthchecks.io | 서버 장애와 백업 미실행을 메일로 인지 |
+| 로그 | 볼륨에 파일 저장, 30일, 300MB 상한 | 배포 후에도 로그 유지 |
+| 자원 | 컨테이너별 메모리 상한 | app 1GB, DB 384MB, Redis 192MB, Caddy 96MB |
+
+코드: [backend.yml](.github/workflows/backend.yml), [tuk-deploy](ops/deploy/tuk-deploy), [tuk-db-backup](ops/backup/tuk-db-backup), [00-tuk-hardening.conf](ops/ssh/00-tuk-hardening.conf), [docker-compose.prod.yml](docker-compose.prod.yml)
+
+## 실사용 검증
+
+2026년 10월 22일부터 25일까지 지인 3명과 실제 폰 4대로 사용했습니다. 툭 9건, 합류 12건, 해당 기간 서버 에러 로그 0건입니다. 아래는 상대 폰 잠금화면에 도착한 실제 알림입니다. 다른 사람의 이름은 가렸습니다.
 
 <table>
 <tr><td><img src="docs/images/real/n_flash.jpg" width="370"></td><td><img src="docs/images/real/n_joined.jpg" width="370"></td></tr>
 <tr><td><img src="docs/images/real/n_time.jpg" width="370"></td><td><img src="docs/images/real/n_place.jpg" width="370"></td></tr>
 </table>
 
-앱 화면 전체와 실사용 기록은 앱 리포 README의 [실사용 기록](https://github.com/pyosunyoung/tuk-app#%EC%8B%A4%EC%82%AC%EC%9A%A9-%EA%B8%B0%EB%A1%9D-2026-10-22--10-25)에 있다.
-
----
-
-## 이 프로젝트에서 봐 주셨으면 하는 것
-
-### 1. 제품 원칙을 코드 구조로 강제했다
-
-- **거절이 보이지 않는다**: `FlashRecipient.status`는 `PENDING`과 `JOINED` **두 개뿐**이다. `DECLINED`를 넣는 순간 "누가 무시했는지"가 데이터로 남는다. 받은 친구 신청을 지우는 **"거절" API도 일부러 만들지 않았다.** 상대의 "보낸 신청" 목록에서 사라지면서 거절이 드러나기 때문이다.
-- **시간이 지나면 알아서 꺼진다**: 한가함은 Redis TTL로, 툭은 `expires_at`과 `@Scheduled` 스위퍼로 만료된다. 다만 **합류 마감과 모임 종료는 다르다.** 성사된 모임은 약속 시간까지 남기고, 시간을 안 정했으면 마감 후 6시간 남긴다. 이 규칙은 `MeetupLifecycle` 한 곳에만 두고, 응답의 `visibleUntil`로 앱에 내려준다.
-- **합류는 멱등하다**: `UNIQUE(flash_id, user_id)` 덕분에 재시도해도 중복 합류가 생기지 않는다.
-- **대상은 서버가 다시 확인한다**: 앱이 보낸 대상 목록을 그대로 믿지 않고 친구 관계를 서버에서 다시 확인한다.
-
-### 2. 실시간 알림을 접속 여부로 나눠 보낸다
-
-같은 이벤트를 두 리스너가 나눠 받아서 **접속 중인 사람에게는 WebSocket(STOMP)으로, 아닌 사람에게는 FCM으로** 보낸다. 둘 다 `@TransactionalEventListener(AFTER_COMMIT)`라서 롤백되면 알림도 나가지 않는다.
-
-알림 종류는 새 툭, 합류, 장소와 약속 시간의 "정해졌어요 / 바뀌었어요", 친구 신청과 수락이다. 정한 본인에게는 보내지 않고, 같은 값을 다시 저장하면 무시한다. 한가함 켜기는 시끄러워서 일부러 푸시하지 않는다.
-
-### 3. 실제로 운영하며 잡은 것들
-
-| 문제 | 해결 | 결과 |
-|---|---|---|
-| 첫 CI 실패(exit 126) | 스크립트 실행 권한을 git에 기록 | CI 통과 |
-| 배포 키로 아무 명령 실행 | `restrict,command=`로 배포 스크립트만 | 셸, 파일 복사 불가 |
-| SSH 비밀번호 대입 공격 | 비밀번호 로그인 끄고 키로만 | 하루 실패 **5,855 → 0** |
-| 초대 코드 무차별 대입 | 틀린 시도만 Redis로 셈 | 10분 10회 넘으면 429 |
-| 탈퇴 시 외래키 위반 | 자식부터 부모 순으로 삭제 | 실제 DB 테스트 |
-| DB마다 다른 제약 이름 | 이름 대신 내용으로 찾아 교체(V5) | 실패 13개 → 0 |
-| 백업이 서버 디스크에만 | 암호화해서 B2에 사본 | 복원해 행 수 일치 |
-| 카카오 토큰 발급 앱 미확인 | `app_id`를 툭 앱과 비교 | 다른 앱 토큰 401 |
-| 초대 코드 중복 허용 | V6 unique index | 실제 DB 테스트 |
-| 배포하면 로그가 사라짐 | 볼륨에 로그 파일, 30일 보관 | 배포 뒤에도 확인 가능 |
-
-몇 가지는 설명을 덧붙인다.
-
-- 첫 CI 실패는 Windows에서 커밋한 스크립트에 실행 권한이 남지 않아서였다(`git update-index --chmod=+x`).
-- 초대 코드는 Redis `INCR`로 틀린 시도만 세고, 첫 실패에만 `EXPIRE`를 건다. 매번 걸면 10분 창이 계속 밀려 영원히 풀리지 않는다.
-- 탈퇴는 외래키에 CASCADE가 없어서 한 트랜잭션 안에서 자식부터 지운다. 삭제 한 줄을 일부러 빼면 테스트가 외래키 위반으로 실패하는 것까지 확인했다.
-- SSH 설정은 같은 옵션이 여러 번 나오면 먼저 읽은 값을 쓴다. 클라우드 기본 설정(`50-cloud-init.conf`)이 비밀번호를 허용하고 있어서, 우리 설정 파일 이름을 `00-`으로 시작해 먼저 읽히게 했다. 숫자는 09-15와 10-14의 서버 기록을 하루 단위로 센 값이다.
-- 백업 복호화 개인 키는 서버에 두지 않는다. 서버를 잃어도 B2 사본을 풀 수 있고, 서버가 털려도 지난 백업은 풀 수 없다.
-- 카카오 앱 ID 설정이 비어 있으면 확인을 건너뛰고 경고만 남긴다. 설정보다 코드가 먼저 배포돼도 운영 로그인이 막히지 않게 하려는 것이다. 비교하는 줄을 빼면 테스트가 실패하는 것까지 확인했다.
-
-### 4. 실사용 의견으로 고친 것 (1.0.1)
+### 사용자 의견을 반영한 수정
 
 <img src="docs/images/real/feedback_dad.jpg" width="360">
 
-"친구 끊기를 해도 바로 삭제 안 됨"이라는 의견을 받았다. 친구 끊기는 상대에게 알리지 않으려고 **아무 이벤트도 보내지 않았다.** 그래서 끊긴 쪽은 앱을 다시 열 때까지 끊은 사람을 친구 목록, 지금 한가한 친구, 툭 보낼 대상에서 계속 봤다. 보낸 신청 취소도 같은 문제라서, 받은 쪽이 남아 있는 신청을 수락하면 404가 났다.
+- **문제**: 친구 끊기는 상대에게 알리지 않으려고 이벤트를 보내지 않았습니다. 끊긴 쪽은 앱을 다시 열 때까지 끊은 사람을 친구 목록과 툭 대상에서 계속 봤고, 취소된 신청을 수락하면 404가 발생했습니다.
+- **해결**: 알림 이벤트와 분리한 `FriendsChangedEvent`를 발행합니다. 커밋 뒤 상대가 접속 중이면 `/user/queue/friends`로 갱신 신호만 보냅니다. 화면에 표시되지 않는 신호라 FCM은 쓰지 않습니다.
+- **호환성**: 옛 앱은 이 주소를 구독하지 않아 서버를 먼저 배포해도 안전합니다.
 
-- 끊기와 신청 취소에서 `FriendsChangedEvent`를 발행한다. 알림용 `FriendshipEvent`와는 따로 둔다.
-- `FriendsChangedBroadcaster`가 커밋 뒤에 상대가 접속 중일 때만 `/user/queue/friends`로 `{"type":"FRIENDS_CHANGED"}`를 보낸다. 화면에 아무것도 띄우지 않는 데이터 신호라 FCM은 쓰지 않는다. 앱이 꺼져 있으면 다음에 켤 때 어차피 새로 불러온다.
-- 옛 앱(1.0.0)은 이 주소를 구독하지 않아서 서버를 먼저 배포해도 안전했다. 앱 1.0.1은 `public/app-version.json` 한 줄을 바꿔 안내했다.
+코드: [FriendsChangedBroadcaster.java](src/main/java/com/tuk/friendship/ws/FriendsChangedBroadcaster.java)
 
----
+전체 화면과 사용 기록은 [앱 리포 README](https://github.com/pyosunyoung/tuk-app#%EC%8B%A4%EC%82%AC%EC%9A%A9-%EA%B2%80%EC%A6%9D)에 있습니다.
 
-## 기술 스택
-
-- **Spring Boot 4.0.7, Java 17**, Spring Data JPA, Spring Security, JWT(jjwt)
-- **PostgreSQL**(도메인 데이터), **Redis**(한가함 TTL, refresh 토큰, 시도 횟수 제한)
-- **WebSocket(STOMP)** 실시간, **FCM** 푸시, **카카오** 로그인과 로컬(장소 검색) API
-- **Flyway**, **Docker Compose**, **Caddy**, **GitHub Actions**, **GHCR**
-- 운영 보조: Backblaze B2(백업 사본), UptimeRobot(서버 감시), healthchecks.io(백업 감시)
-
-## 아키텍처
-
-```mermaid
-flowchart LR
-    App[Flutter 앱] -->|REST + JWT| Caddy
-    App <-->|STOMP over WebSocket| Caddy
-    Caddy[Caddy<br>HTTPS 자동 발급] --> Server[Spring Boot]
-    Caddy -->|정적 파일| Public[약관, 초대 페이지, 공유 카드, app-version.json]
-    Server --> PG[(PostgreSQL)]
-    Server --> Redis[(Redis)]
-    Server -->|접속 안 한 사람| FCM[FCM] --> App
-    Server -->|토큰 검증, 장소 검색| Kakao[카카오 API]
-    PG -. 매일 04:00 pg_dump, age 암호화 .-> B2[(Backblaze B2)]
-```
-
-요청은 **Controller, Service, Repository** 순서로 흐르고, 패키지는 **도메인별**로 나눴다(`user`, `friendship`, `presence`, `flash`, `notification`, `place`, `global`).
-
-**인증**: 앱이 카카오 SDK로 받은 토큰을 서버가 카카오에 확인하고 자체 JWT(access 30분, refresh 14일)를 발급한다. 확인할 때 그 토큰이 **툭 앱에서 발급된 것인지(app_id)** 먼저 본다. 다른 카카오 앱의 토큰으로 로그인되는 것을 막기 위해서다. refresh는 **Redis Lua로 원자적으로 교체**해서, 같은 토큰으로 동시에 요청이 와도 하나만 성공한다. WebSocket은 CONNECT 헤더의 JWT로 인증한다.
-
-**장소 검색**은 서버가 카카오 로컬 API를 대신 호출한다. REST 키를 앱에 넣으면 APK를 풀어 누구나 꺼내 쓸 수 있어서다.
-
-## 주요 엔드포인트
+## API
 
 - **인증**: `POST /api/auth/login`, `/refresh`, `/logout`
-- **내 정보**: `GET /api/users/me`, `DELETE /api/users/me`(탈퇴)
-- **친구** (`/api/friendships`)
-    - `GET /`, `GET /invite-code`, `POST /redeem`, `POST /{id}/accept`
-    - `GET /requests`, `GET /requests/sent`
-    - `DELETE /requests/{id}`(보낸 신청 취소), `DELETE /friends/{userId}`(친구 끊기)
-- **한가함** (`/api/presence`): `POST`, `DELETE`, `GET /me`, `GET /friends`
-- **툭** (`/api/flashes`)
-    - `POST /`, `GET /received`, `GET /sent`, `POST /{id}/join`
-    - `GET /{id}/room`, `PATCH /{id}/room/place`, `PATCH /{id}/room/time`
+- **내 정보**: `GET`, `DELETE /api/users/me`
+- **친구**: `GET /api/friendships`, `/invite-code`, `/requests`, `/requests/sent`
+    - `POST /redeem`, `/{id}/accept`
+    - `DELETE /requests/{id}`, `/friends/{userId}`
+- **한가함**: `POST`, `DELETE /api/presence`, `GET /me`, `/friends`
+- **툭**: `POST /api/flashes`, `GET /received`, `/sent`, `/{id}/room`
+    - `POST /{id}/join`
+    - `PATCH /{id}/room/place`, `/{id}/room/time`
 - **장소**: `GET /api/places/search?query=`
 - **기기 토큰**: `POST`, `DELETE /api/device-tokens`
-- **실시간**: `/ws`에 연결한 뒤 `/user/queue/presence`, `/user/queue/flash`, `/user/queue/friends`(친구 관계 변경 신호)를 구독
+- **실시간**: `/ws`, 구독 `/user/queue/presence`, `/user/queue/flash`, `/user/queue/friends`
 
-요청과 응답 형태, 이벤트 목록은 앱과의 계약서 [docs/API_FOR_APP.md](docs/API_FOR_APP.md)에 있다.
+요청과 응답 형식은 [API_FOR_APP.md](docs/API_FOR_APP.md)에 정리했습니다.
 
----
-
-## 실행
-
-### 로컬 개발
+## 실행과 테스트
 
 ```bash
-docker compose up -d      # PostgreSQL + Redis
+docker compose up -d      # PostgreSQL, Redis
 ./gradlew bootRun         # 기본 프로필 dev
+./gradlew test            # 149개 (동시성 20회 반복 포함 168회 실행)
 ```
 
-dev 프로필에서는 `DevSocialClient`로 카카오 없이 로그인할 수 있다(운영에서는 401).
+서비스 규칙은 Mockito로, 쿼리와 탈퇴, 마이그레이션은 실제 PostgreSQL로 검증합니다. H2는 제약 조건과 네이티브 쿼리 동작이 달라 사용하지 않습니다.
 
-```bash
-curl -X POST localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"provider":"dev","token":"alice"}'
-```
+## 현재 한계와 다음 단계
 
-### 운영 배포
-
-`main`에 push하면 끝이다. 문서만 바뀐 커밋은 건너뛴다. 서버에서는 빌드하지 않는다. 2GB VM에서 Gradle이 돌면 운영 중인 앱과 메모리를 다투기 때문이다.
-
-```
-test(PG, Redis 서비스 컨테이너) → image(GHCR) → deploy(SSH 강제 명령) → health 180초 대기 → 실패 시 직전 이미지로 롤백
-```
-
-> **`TZ=Asia/Seoul`이 중요하다.** 만료를 서버 시계 기준으로 계산해서 UTC 컨테이너면 9시간 어긋난다.
-
-롤백, 백업 복구, 로그 보는 명령은 [CLAUDE.md](CLAUDE.md)의 "운영 기동 방법"과 "앱 로그"에 있다.
-
-## 테스트
-
-```bash
-./gradlew test    # 149개 (동시성 테스트 20회 반복을 포함하면 168회 실행)
-```
-
-서비스 규칙은 Mockito로, 리포지토리와 탈퇴와 마이그레이션은 **실제 PostgreSQL**(`@DataJpaTest`, `@SpringBootTest`)로 확인한다. 제약 조건과 네이티브 쿼리를 H2로 대신하면 실제와 달라지기 때문이다.
-
-refresh 교체의 원자성도 **실제 Redis에 같은 토큰으로 동시에 요청**해서 교체가 정확히 한 번만 되는지 본다. Lua 대신 읽기, 비교, 쓰기를 따로 하도록 바꾸면 요청 8개에 토큰 8개가 발급되면서 테스트가 실패하는 것까지 확인했다.
+- **무중단 배포**: 재시작 방식이라 배포 중 약 50초 끊깁니다. 다음 단계는 블루그린 배포입니다.
+- **수평 확장**: SimpleBroker와 스케줄러가 서버 한 대를 전제로 합니다. 확장 시 외부 브로커와 분산 락으로 교체합니다.
+- **부하 테스트**: 동시 접속 한계와 응답 시간은 아직 측정하지 않았습니다.
+- **롤백 검증**: 자동 롤백은 실패를 일부러 주입해 확인하지 않았습니다.
 
 ## 문서
 
-각 정리본은 **배경, 선정 이유, 구현, 전후 비교(캡처와 수치), 테스트, 남은 과제** 순서로 썼다.
-
-- [백엔드 MVP (07-03 ~ 07-28)](docs/FEATURE_NOTES_2026-07-03_07-28_backend.md): 인증, 친구, 한가함, 툭, 실시간, FCM
-- [앱 API 지원 (07-30 ~ 08-27)](docs/FEATURE_NOTES_2026-07-30_08-27_backend.md): 앱 API 계약서, 초대 코드, 내가 던진 툭 조회
-- [배포 준비 (09월)](docs/OPS_NOTES_2026-09.md): Flyway, 운영 프로필, 배포처 선정, Docker, Caddy
-- [앱 리포 정리본](https://github.com/pyosunyoung/tuk-app/tree/main/docs): 9월 이후 기능과 운영(배포, CI/CD, 백업, 모니터링)
-- [API_FOR_APP.md](docs/API_FOR_APP.md): 앱과의 API 계약서
-- [CLAUDE.md](CLAUDE.md): 설계 원칙, 운영 절차, 배포 체크리스트
+- [전체 정리 (OVERVIEW)](https://github.com/pyosunyoung/tuk-app/blob/main/docs/OVERVIEW.md)
+- 기능 정리: [백엔드 MVP](docs/FEATURE_NOTES_2026-07-03_07-28_backend.md), [앱 API 지원](docs/FEATURE_NOTES_2026-07-30_08-27_backend.md), [배포 준비](docs/OPS_NOTES_2026-09.md)
+- 운영 절차와 설계 원칙: [CLAUDE.md](CLAUDE.md)
