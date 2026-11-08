@@ -9,6 +9,7 @@
 </table>
 
 - **역할**: 1인 개발 (기획, 서버, 앱, 인프라)
+- **개발 방식**: AI 코딩 도구(Claude Code)를 활용했으며, 설계 판단과 검증은 직접 수행했습니다.
 - **스택**: Spring Boot 4, Java 17, JPA, PostgreSQL, Redis, WebSocket(STOMP), FCM, Flyway
 - **인프라**: Vultr 서울 VM, Docker Compose, Caddy, GitHub Actions, GHCR, Backblaze B2
 - **운영**: 2026년 9월부터 운영 중, 월 $10
